@@ -10,6 +10,9 @@ input { width: 100%; margin-top: 6px; padding: 10px 12px; background: #f3f7f5; c
 label, fieldset { display: block; margin: 14px 0; }
 :focus-visible { outline: 3px solid #8fe7c7; outline-offset: 3px; }
 .test-data-banner { margin: 16px 0; padding: 10px; border: 1px solid #866d2b; border-radius: 12px; color: #f1d684; }
+.app-navigation { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+.app-navigation button { background: #14221d; color: #d9e4df; }
+.app-navigation button[aria-current="page"] { background: #5fd4a7; color: #092018; }
 .offer-card { margin: 12px 0; padding: 16px; border: 1px solid #2f6857; border-radius: 16px; background: #111f1a; }
 .offer-card.stale { opacity: .72; border-color: #3c4758; }
 .offer-card a { display: inline-block; margin-left: 10px; color: #8fe7c7; }

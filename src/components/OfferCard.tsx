@@ -8,9 +8,10 @@ const euros = (cents: number) =>
 type OfferCardProps = {
   result: RankedOffer
   grams: number
+  onFavoriteChange?: (ids: string[]) => void
 }
 
-export function OfferCard({ result, grams }: OfferCardProps) {
+export function OfferCard({ result, grams, onFavoriteChange }: OfferCardProps) {
   const { offer, totalPriceCents, current } = result
   const [favorite, setFavorite] = useState(devicePreferences.getFavoriteIds().includes(offer.id))
   const formLabel = offer.form === 'flower' ? 'Blüte' : 'Extrakt'
@@ -29,7 +30,11 @@ export function OfferCard({ result, grams }: OfferCardProps) {
       </p>
       <button
         aria-pressed={favorite}
-        onClick={() => setFavorite(devicePreferences.toggleFavorite(offer.id).includes(offer.id))}
+        onClick={() => {
+          const favoriteIds = devicePreferences.toggleFavorite(offer.id)
+          setFavorite(favoriteIds.includes(offer.id))
+          onFavoriteChange?.(favoriteIds)
+        }}
       >
         {favorite ? 'Favorit entfernen' : 'Als Favorit speichern'}
       </button>
