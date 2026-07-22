@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { OfferQuery, RankedOffer } from '../domain/offer'
 import type { OffersRepository } from '../data/offers-repository'
 import { ResultsList } from './ResultsList'
@@ -6,37 +6,42 @@ import { SearchControls } from './SearchControls'
 
 type SearchExperienceProps = {
   repository: OffersRepository
-  onResultsChange?: (results: RankedOffer[], grams: number) => void
+  onResultsChange?: (results: RankedOffer[], query: OfferQuery) => void
+}
+
+type SearchView = {
+  results: RankedOffer[] | null
+  quantity: number
+  status: 'idle' | 'loading' | 'error'
 }
 
 export function SearchExperience({ repository, onResultsChange }: SearchExperienceProps) {
-  const [results, setResults] = useState<RankedOffer[] | null>(null)
-  const [grams, setGrams] = useState(10)
-  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [view, setView] = useState<SearchView>({ results: null, quantity: 10, status: 'idle' })
+  const latestRequest = useRef(0)
 
   async function search(query: OfferQuery) {
-    setStatus('loading')
-    setResults(null)
-    setGrams(query.grams)
+    const requestId = ++latestRequest.current
+    setView({ results: null, quantity: query.quantity, status: 'loading' })
 
     try {
       const nextResults = await repository.search(query)
-      setResults(nextResults)
-      onResultsChange?.(nextResults, query.grams)
-      setStatus('idle')
+      if (requestId !== latestRequest.current) return
+      setView({ results: nextResults, quantity: query.quantity, status: 'idle' })
+      onResultsChange?.(nextResults, query)
     } catch {
-      setStatus('error')
+      if (requestId !== latestRequest.current) return
+      setView({ results: null, quantity: query.quantity, status: 'error' })
     }
   }
 
   return (
     <>
       <SearchControls onSearch={search} />
-      {status === 'loading' && <p role="status">Angebote werden geladen …</p>}
-      {status === 'error' && (
+      {view.status === 'loading' && <p role="status">Angebote werden geladen …</p>}
+      {view.status === 'error' && (
         <p role="alert">Angebote konnten nicht geladen werden. Es wird keine Verfügbarkeit angenommen.</p>
       )}
-      {results && <ResultsList results={results} grams={grams} />}
+      {view.results && <ResultsList results={view.results} quantity={view.quantity} />}
     </>
   )
 }

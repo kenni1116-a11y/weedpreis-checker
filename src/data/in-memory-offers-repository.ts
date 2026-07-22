@@ -15,6 +15,14 @@ export function createInMemoryOffersRepository(offers: Offer[]): OffersRepositor
       )
 
       return rankOffers(matches, query, now)
+    },
+    async getByIds(ids, pricingContext, now = new Date()) {
+      const requestedIds = new Set(ids)
+      return rankOffers(
+        offers.filter((offer) => requestedIds.has(offer.id)),
+        pricingContext,
+        now,
+      )
     }
   }
 }

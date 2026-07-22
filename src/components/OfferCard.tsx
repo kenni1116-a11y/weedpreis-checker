@@ -7,11 +7,11 @@ const euros = (cents: number) =>
 
 type OfferCardProps = {
   result: RankedOffer
-  grams: number
+  quantity: number
   onFavoriteChange?: (ids: string[]) => void
 }
 
-export function OfferCard({ result, grams, onFavoriteChange }: OfferCardProps) {
+export function OfferCard({ result, quantity, onFavoriteChange }: OfferCardProps) {
   const { offer, totalPriceCents, current } = result
   const [favorite, setFavorite] = useState(devicePreferences.getFavoriteIds().includes(offer.id))
   const formLabel = offer.form === 'flower' ? 'Blüte' : 'Extrakt'
@@ -22,8 +22,8 @@ export function OfferCard({ result, grams, onFavoriteChange }: OfferCardProps) {
       <h3>{offer.pharmacyName}</h3>
       <p>{offer.productName} · {offer.manufacturer}</p>
       <p>THC {offer.thcPercent}% · CBD {offer.cbdPercent}% · {formLabel}</p>
-      <strong>{euros(offer.unitPriceCents)} / g</strong>
-      <p>Gesamtpreis für {grams} g: {euros(totalPriceCents)}</p>
+      <strong>{euros(offer.unitPriceCents)} / {offer.priceUnit}</strong>
+      <p>Gesamtpreis für {quantity} {offer.priceUnit}: {euros(totalPriceCents)}</p>
       <p>
         {offer.available ? 'verfügbar' : 'nicht verfügbar'} · {offer.sourceType} · zuletzt geprüft{' '}
         {new Date(offer.checkedAt).toLocaleString('de-DE')}

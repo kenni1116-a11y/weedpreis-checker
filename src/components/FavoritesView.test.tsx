@@ -1,11 +1,11 @@
-import { render, screen } from '@testing-library/react'
-import { beforeEach, expect, it } from 'vitest'
-import type { RankedOffer } from '../domain/offer'
+import { cleanup, render, screen } from '@testing-library/react'
+import { beforeEach, expect, it, vi } from 'vitest'
+import { createInMemoryOffersRepository } from '../data/in-memory-offers-repository'
+import type { Offer } from '../domain/offer'
 import { FavoritesView } from './FavoritesView'
 
-const results: RankedOffer[] = [
+const offers: Offer[] = [
   {
-    offer: {
       id: 'offer-a',
       productId: 'alpha',
       productName: 'Testblüte Alpha 22/1',
@@ -18,26 +18,35 @@ const results: RankedOffer[] = [
       sourceType: 'feed',
       sourceUrl: 'https://example.invalid/a',
       unitPriceCents: 649,
+      priceUnit: 'g',
       shippingCents: 499,
       pickup: true,
       shipping: true,
       available: true,
       checkedAt: '2026-07-22T12:00:00.000Z',
-    },
-    totalPriceCents: 6989,
-    current: true,
   },
 ]
 
-beforeEach(() => localStorage.clear())
+const repository = createInMemoryOffersRepository(offers)
 
-it('shows locally saved offers with the shared result presentation', () => {
+beforeEach(() => {
+  cleanup()
+  localStorage.clear()
+})
+
+it('resolves locally saved offer IDs with the shared result presentation', async () => {
   localStorage.setItem('weedpreis.favorites', JSON.stringify(['offer-a']))
 
-  render(<FavoritesView results={results} grams={10} />)
+  render(
+    <FavoritesView
+      repository={repository}
+      pricingContext={{ mode: 'shipping', quantity: 10 }}
+      now={new Date('2026-07-22T18:00:00.000Z')}
+    />,
+  )
 
   expect(screen.getByRole('heading', { name: 'Favoriten' })).toBeInTheDocument()
-  expect(screen.getByText('Muster-Apotheke A – Testdaten')).toBeInTheDocument()
+  expect(await screen.findByText('Muster-Apotheke A – Testdaten')).toBeInTheDocument()
   expect(screen.getByText((_, element) =>
     element?.tagName === 'P' && element.textContent === 'Gesamtpreis für 10 g: 69,89 €',
   )).toBeInTheDocument()
@@ -45,7 +54,24 @@ it('shows locally saved offers with the shared result presentation', () => {
 })
 
 it('explains when no local favorites have been saved', () => {
-  render(<FavoritesView results={results} grams={10} />)
+  render(<FavoritesView repository={repository} pricingContext={{ mode: 'shipping', quantity: 10 }} />)
 
   expect(screen.getByText('Noch keine Favoriten gespeichert.')).toBeInTheDocument()
+})
+
+it('reports when saved favorites cannot be resolved', async () => {
+  localStorage.setItem('weedpreis.favorites', JSON.stringify(['offer-a']))
+  const failingRepository = {
+    search: vi.fn(),
+    getByIds: vi.fn().mockRejectedValue(new Error('offline')),
+  }
+
+  render(
+    <FavoritesView
+      repository={failingRepository}
+      pricingContext={{ mode: 'shipping', quantity: 10 }}
+    />,
+  )
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Favoriten konnten nicht geladen werden')
 })

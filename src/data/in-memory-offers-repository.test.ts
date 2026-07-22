@@ -6,7 +6,7 @@ describe('in-memory repository', () => {
   it('matches product and manufacturer case-insensitively', async () => {
     const repository = createInMemoryOffersRepository(syntheticOffers)
     const result = await repository.search(
-      { mode: 'shipping', grams: 10, text: 'testlabor nord' },
+      { mode: 'shipping', quantity: 10, text: 'testlabor nord' },
       new Date('2026-07-22T18:00:00Z')
     )
 
@@ -18,11 +18,26 @@ describe('in-memory repository', () => {
     const repository = createInMemoryOffersRepository(syntheticOffers)
     const result = await repository.search({
       mode: 'shipping',
-      grams: 10,
+      quantity: 10,
       form: 'flower',
       minThcPercent: 20
     })
 
+    expect(result.length).toBeGreaterThan(0)
     expect(result.every(({ offer }) => offer.form === 'flower' && offer.thcPercent >= 20)).toBe(true)
+  })
+
+  it('resolves favorite IDs independently of catalog search filters', async () => {
+    const repository = createInMemoryOffersRepository(syntheticOffers)
+
+    const result = await repository.getByIds(
+      ['offer-a', 'offer-c'],
+      { mode: 'shipping', quantity: 2 },
+    )
+
+    expect(result.map(({ offer }) => [offer.id, offer.priceUnit])).toEqual([
+      ['offer-a', 'g'],
+      ['offer-c', 'ml'],
+    ])
   })
 })

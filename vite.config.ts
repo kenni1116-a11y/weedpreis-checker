@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
           navigateFallback: 'index.html'
         },
         manifest: {
+          lang: 'de',
           name: 'Weedpreis – Neutraler Apothekenvergleich',
           short_name: 'Weedpreis',
           description: 'Neutraler Preis- und Verfügbarkeitsvergleich für Medizinalcannabis.',

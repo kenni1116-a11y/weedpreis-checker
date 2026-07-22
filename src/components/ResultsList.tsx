@@ -3,11 +3,11 @@ import { OfferCard } from './OfferCard'
 
 type ResultsListProps = {
   results: RankedOffer[]
-  grams: number
+  quantity: number
   onFavoriteChange?: (ids: string[]) => void
 }
 
-export function ResultsList({ results, grams, onFavoriteChange }: ResultsListProps) {
+export function ResultsList({ results, quantity, onFavoriteChange }: ResultsListProps) {
   const current = results.filter((result) => result.current)
   const stale = results.filter((result) => !result.current)
 
@@ -19,13 +19,13 @@ export function ResultsList({ results, grams, onFavoriteChange }: ResultsListPro
     <section aria-live="polite" aria-label="Suchergebnisse">
       <h2>{current.length} aktuelle Angebote</h2>
       {current.map((result) => (
-        <OfferCard key={result.offer.id} result={result} grams={grams} onFavoriteChange={onFavoriteChange} />
+        <OfferCard key={result.offer.id} result={result} quantity={quantity} onFavoriteChange={onFavoriteChange} />
       ))}
       {stale.length > 0 && (
         <>
           <h2>Zuletzt gesehen</h2>
           {stale.map((result) => (
-            <OfferCard key={result.offer.id} result={result} grams={grams} onFavoriteChange={onFavoriteChange} />
+            <OfferCard key={result.offer.id} result={result} quantity={quantity} onFavoriteChange={onFavoriteChange} />
           ))}
         </>
       )}

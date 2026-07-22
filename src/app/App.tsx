@@ -4,15 +4,14 @@ import { AppNavigation, type AppTab } from '../components/AppNavigation'
 import { FavoritesView } from '../components/FavoritesView'
 import { InfoView } from '../components/InfoView'
 import { SearchExperience } from '../components/SearchExperience'
-import type { RankedOffer } from '../domain/offer'
+import type { PricingContext } from '../domain/offer'
 import { inMemoryOffersRepository } from '../data/synthetic-offers'
 import { devicePreferences } from '../storage/device-preferences'
 
 export function App() {
   const [adult, setAdult] = useState(devicePreferences.isAdultConfirmed())
   const [tab, setTab] = useState<AppTab>('search')
-  const [searchResults, setSearchResults] = useState<RankedOffer[]>([])
-  const [searchGrams, setSearchGrams] = useState(10)
+  const [pricingContext, setPricingContext] = useState<PricingContext>({ mode: 'shipping', quantity: 10 })
 
   if (!adult) {
     return (
@@ -30,13 +29,14 @@ export function App() {
       {tab === 'search' && (
         <SearchExperience
           repository={inMemoryOffersRepository}
-          onResultsChange={(results, grams) => {
-            setSearchResults(results)
-            setSearchGrams(grams)
+          onResultsChange={(_, query) => {
+            setPricingContext({ mode: query.mode, quantity: query.quantity })
           }}
         />
       )}
-      {tab === 'favorites' && <FavoritesView results={searchResults} grams={searchGrams} />}
+      {tab === 'favorites' && (
+        <FavoritesView repository={inMemoryOffersRepository} pricingContext={pricingContext} />
+      )}
       {tab === 'info' && <InfoView />}
     </main>
   )

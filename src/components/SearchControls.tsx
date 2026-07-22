@@ -7,9 +7,8 @@ type SearchControlsProps = {
 
 export function SearchControls({ onSearch }: SearchControlsProps) {
   const [text, setText] = useState('')
-  const [grams, setGrams] = useState(10)
+  const [quantity, setQuantity] = useState(10)
   const [mode, setMode] = useState<FulfillmentMode>('shipping')
-  const [postalCode, setPostalCode] = useState('')
   const [form, setForm] = useState<ProductForm | ''>('')
   const [minThcPercent, setMinThcPercent] = useState('')
 
@@ -17,9 +16,8 @@ export function SearchControls({ onSearch }: SearchControlsProps) {
     event.preventDefault()
     onSearch({
       text,
-      grams,
+      quantity,
       mode,
-      postalCode: mode === 'pickup' ? postalCode : undefined,
       form: form || undefined,
       minThcPercent: minThcPercent === '' ? undefined : Number(minThcPercent),
     })
@@ -41,16 +39,17 @@ export function SearchControls({ onSearch }: SearchControlsProps) {
         Präparat oder Hersteller
         <input type="search" value={text} onChange={(event) => setText(event.target.value)} />
       </label>
-      <label>
-        Menge in Gramm
-        <input
-          type="number"
-          min="1"
-          max="100"
-          value={grams}
-          onChange={(event) => setGrams(Number(event.target.value))}
-        />
-      </label>
+      <label htmlFor="quantity">Menge</label>
+      <input
+        id="quantity"
+        type="number"
+        min="1"
+        max="100"
+        value={quantity}
+        aria-describedby="quantity-hint"
+        onChange={(event) => setQuantity(Number(event.target.value))}
+      />
+      <p id="quantity-hint" className="field-hint">Blüten in g, Extrakte in ml</p>
       <label>
         Darreichungsform
         <select value={form} onChange={(event) => setForm(event.target.value as ProductForm | '')}>
@@ -71,15 +70,9 @@ export function SearchControls({ onSearch }: SearchControlsProps) {
         />
       </label>
       {mode === 'pickup' && (
-        <label>
-          Postleitzahl
-          <input
-            inputMode="numeric"
-            pattern="[0-9]{5}"
-            value={postalCode}
-            onChange={(event) => setPostalCode(event.target.value)}
-          />
-        </label>
+        <p className="field-hint">
+          Keine Live-Standortsuche: Entfernungen sind ausschließlich synthetische Testwerte.
+        </p>
       )}
       <button type="submit">Suchen</button>
     </form>
