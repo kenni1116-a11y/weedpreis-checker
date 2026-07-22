@@ -27,3 +27,39 @@
 ## Self-review
 
 No unresolved issues found. The initial direct call to `rankOffers` was corrected to supply its required current time after the full suite exposed the missing argument.
+
+## Review Fix
+
+### Changed files
+
+- `src/app/App.tsx`: stores the exact last successful `RankedOffer[]` and requested grams, then supplies both unchanged to `FavoritesView`.
+- `src/components/SearchExperience.tsx`: reports successful results and grams through the small optional `onResultsChange` interface.
+- `src/app/App.test.tsx`: adds the pickup, 7 g integration test proving a saved favorite retains `Gesamtpreis für 7 g: 45,43 €` after switching tabs.
+
+### RED evidence
+
+Command:
+
+```bash
+PATH=/Users/ken/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH pnpm vitest run src/app/App.test.tsx
+```
+
+Output: `1 failed | 1 passed`; the favorite tab rendered `Gesamtpreis für 10 g: 69,89 €` instead of the asserted pickup total for 7 g.
+
+### GREEN verification
+
+Commands:
+
+```bash
+PATH=/Users/ken/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH pnpm vitest run src/app/App.test.tsx src/components/AppNavigation.test.tsx src/components/FavoritesView.test.tsx
+PATH=/Users/ken/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH pnpm vitest run
+PATH=/Users/ken/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH pnpm build
+git diff --check
+```
+
+Outputs:
+
+- Focused Task 6 tests: `3 passed`, `5 passed`.
+- Full suite: `8 passed`, `12 passed`.
+- Build: passed, including PWA generation.
+- `git diff --check`: no output; passed.

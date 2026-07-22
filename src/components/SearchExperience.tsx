@@ -6,9 +6,10 @@ import { SearchControls } from './SearchControls'
 
 type SearchExperienceProps = {
   repository: OffersRepository
+  onResultsChange?: (results: RankedOffer[], grams: number) => void
 }
 
-export function SearchExperience({ repository }: SearchExperienceProps) {
+export function SearchExperience({ repository, onResultsChange }: SearchExperienceProps) {
   const [results, setResults] = useState<RankedOffer[] | null>(null)
   const [grams, setGrams] = useState(10)
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
@@ -19,7 +20,9 @@ export function SearchExperience({ repository }: SearchExperienceProps) {
     setGrams(query.grams)
 
     try {
-      setResults(await repository.search(query))
+      const nextResults = await repository.search(query)
+      setResults(nextResults)
+      onResultsChange?.(nextResults, query.grams)
       setStatus('idle')
     } catch {
       setStatus('error')
