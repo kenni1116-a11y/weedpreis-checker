@@ -30,14 +30,30 @@ describe('in-memory repository', () => {
   it('resolves favorite IDs independently of catalog search filters', async () => {
     const repository = createInMemoryOffersRepository(syntheticOffers)
 
-    const result = await repository.getByIds(
-      ['offer-a', 'offer-c'],
-      { mode: 'shipping', quantity: 2 },
-    )
+    const result = await repository.getByIds(['offer-a', 'offer-c'])
 
-    expect(result.map(({ offer }) => [offer.id, offer.priceUnit])).toEqual([
+    expect(result.map((item) => item.status === 'found'
+      ? [item.offer.id, item.offer.priceUnit]
+      : [item.id, item.status],
+    )).toEqual([
       ['offer-a', 'g'],
       ['offer-c', 'ml'],
+    ])
+  })
+
+  it('returns unavailable offers and explicit not-found entries for every saved ID', async () => {
+    const unavailableOffer = {
+      ...syntheticOffers[0],
+      id: 'offer-unavailable',
+      available: false,
+    }
+    const repository = createInMemoryOffersRepository([...syntheticOffers, unavailableOffer])
+
+    const result = await repository.getByIds(['offer-unavailable', 'offer-missing'])
+
+    expect(result).toMatchObject([
+      { id: 'offer-unavailable', status: 'found', offer: { available: false } },
+      { id: 'offer-missing', status: 'not-found' },
     ])
   })
 })

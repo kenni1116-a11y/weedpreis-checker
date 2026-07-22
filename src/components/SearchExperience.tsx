@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { OfferQuery, RankedOffer } from '../domain/offer'
 import type { OffersRepository } from '../data/offers-repository'
 import { ResultsList } from './ResultsList'
@@ -18,6 +18,10 @@ type SearchView = {
 export function SearchExperience({ repository, onResultsChange }: SearchExperienceProps) {
   const [view, setView] = useState<SearchView>({ results: null, quantity: 10, status: 'idle' })
   const latestRequest = useRef(0)
+
+  useEffect(() => () => {
+    latestRequest.current += 1
+  }, [])
 
   async function search(query: OfferQuery) {
     const requestId = ++latestRequest.current

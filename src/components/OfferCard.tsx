@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { RankedOffer } from '../domain/offer'
+import type { FulfillmentMode, RankedOffer } from '../domain/offer'
 import { devicePreferences } from '../storage/device-preferences'
 
 const euros = (cents: number) =>
@@ -8,10 +8,18 @@ const euros = (cents: number) =>
 type OfferCardProps = {
   result: RankedOffer
   quantity: number
+  totalMode?: FulfillmentMode
+  availabilityMessage?: string
   onFavoriteChange?: (ids: string[]) => void
 }
 
-export function OfferCard({ result, quantity, onFavoriteChange }: OfferCardProps) {
+export function OfferCard({
+  result,
+  quantity,
+  totalMode,
+  availabilityMessage,
+  onFavoriteChange,
+}: OfferCardProps) {
   const { offer, totalPriceCents, current } = result
   const [favorite, setFavorite] = useState(devicePreferences.getFavoriteIds().includes(offer.id))
   const formLabel = offer.form === 'flower' ? 'Blüte' : 'Extrakt'
@@ -23,7 +31,11 @@ export function OfferCard({ result, quantity, onFavoriteChange }: OfferCardProps
       <p>{offer.productName} · {offer.manufacturer}</p>
       <p>THC {offer.thcPercent}% · CBD {offer.cbdPercent}% · {formLabel}</p>
       <strong>{euros(offer.unitPriceCents)} / {offer.priceUnit}</strong>
-      <p>Gesamtpreis für {quantity} {offer.priceUnit}: {euros(totalPriceCents)}</p>
+      <p>
+        Gesamtpreis für {quantity} {offer.priceUnit}
+        {totalMode ? ` (${totalMode === 'shipping' ? 'Versand' : 'Abholung'})` : ''}: {euros(totalPriceCents)}
+      </p>
+      {availabilityMessage && <p>{availabilityMessage}</p>}
       <p>
         {offer.available ? 'verfügbar' : 'nicht verfügbar'} · {offer.sourceType} · zuletzt geprüft{' '}
         {new Date(offer.checkedAt).toLocaleString('de-DE')}
