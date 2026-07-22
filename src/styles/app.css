@@ -1,0 +1,5 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #f3f7f5; background: #07110f; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #07110f; }
+button, input, select { font: inherit; }
+.app-shell { width: min(100%, 520px); min-height: 100vh; margin: 0 auto; padding: max(18px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom)); }
