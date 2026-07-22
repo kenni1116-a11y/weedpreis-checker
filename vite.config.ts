@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
+        workbox: {
+          navigateFallback: 'index.html'
+        },
         manifest: {
           name: 'Weedpreis – Neutraler Apothekenvergleich',
           short_name: 'Weedpreis',
@@ -22,6 +25,10 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
-    test: { environment: 'jsdom', setupFiles: './vitest.setup.ts' }
+    test: {
+      environment: 'jsdom',
+      setupFiles: './vitest.setup.ts',
+      include: ['src/**/*.test.ts', 'src/**/*.test.tsx']
+    }
   }
 })
