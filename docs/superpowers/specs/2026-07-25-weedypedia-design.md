@@ -77,23 +77,29 @@ Der Zugang zur App setzt ein Konto voraus. Bei der Registrierung werden nur
 folgende Angaben oder Bestätigungen verlangt:
 
 - eindeutiger pseudonymer Benutzername
+- verifizierte, nicht öffentliche E-Mail-Adresse
 - Passwort
 - Bestätigung „Ich bin mindestens 18 Jahre alt“
 - Zustimmung zur aktuellen Datenschutz- und Nutzungsfassung
-- einmalig ausgegebener Wiederherstellungscode
-- freiwillige E-Mail-Adresse für eine zusätzliche Wiederherstellung
 
 Die App verlangt keinen echten Namen, keine Anschrift, keine Telefonnummer und
 kein Geburtsdatum. Eine zufällige interne Konto-ID, Erstellungszeitpunkte,
 Zustimmungsstände und Sicherheitsmetadaten werden systemseitig erzeugt.
 
-Passwörter und Wiederherstellungscodes werden nie im Klartext gespeichert.
-Eine freiwillige E-Mail-Adresse wird getrennt vom öffentlichen Benutzernamen
-verwaltet und vor Verwendung verifiziert. Passkeys oder Zwei-Faktor-
-Authentisierung werden als optionale zusätzliche Absicherung vorgesehen.
+Passwörter werden nie im Klartext gespeichert. Die E-Mail-Adresse dient nur
+der Anmeldung, Verifizierung, Kontowiederherstellung und sicherheitsbezogenen
+Benachrichtigung. Sie wird getrennt vom sichtbaren Benutzernamen verwaltet,
+nicht öffentlich angezeigt und nicht für Werbung oder Analyse verwendet.
+Eine E-Mail-Änderung erfordert das aktuelle Passwort sowie die Bestätigung an
+der alten und neuen Adresse. Eine optionale TOTP-Zwei-Faktor-Authentisierung
+über eine Authenticator-App schützt Anmeldung und sensible Kontoaktionen
+zusätzlich; SMS wird dafür nicht verwendet. Passkeys können später nach einer
+gesonderten Sicherheits- und Kompatibilitätsprüfung ergänzt werden.
 
 Nutzer können ihre Kontodaten und persönlichen Bestände exportieren und ihr
-Konto vollständig löschen. Die Bestandsdaten werden weder zur öffentlichen
+Konto vollständig löschen. Export und Löschung erfordern eine frische
+Passwortbestätigung und bei aktivierter Zwei-Faktor-Authentisierung zusätzlich
+einen frischen TOTP-Code. Die Bestandsdaten werden weder zur öffentlichen
 Sortierung noch für Empfehlungen, Werbung oder Profilbildung verwendet.
 
 ## 5. Persönliche Bestandsübersicht
@@ -379,10 +385,10 @@ Rohdaten, Prüffälle und Zugangsschlüssel sind nicht erreichbar.
 ### Konto- und Profilschnittstelle
 
 Eine getrennte authentifizierte Schnittstelle verwaltet Konto,
-Wiederherstellung und persönlichen Bestand. Die Authentifizierung muss
-Benutzername und Passwort unterstützen, ohne E-Mail als Pflichtfeld zu
-verwenden. Die PWA implementiert keine eigene Passwortprüfung oder
-Passwortspeicherung.
+Wiederherstellung und persönlichen Bestand. Die Authentifizierung verwendet
+die verifizierte E-Mail-Adresse und das Passwort. Der Benutzername bleibt das
+sichtbare Pseudonym im persönlichen Profil. Die PWA implementiert keine eigene
+Passwortprüfung oder Passwortspeicherung.
 
 ### Import- und Prüfbereich
 
@@ -419,13 +425,22 @@ Schemas oder gleichwertig isolierten Bereichen. Persönliche Datensätze sind
 - Transport- und Speicherverschlüsselung sind verpflichtend.
 - Passwörter werden ausschließlich über einen geprüften
   Authentifizierungsdienst als starker, gesalzener Hash verarbeitet.
-- Wiederherstellungscodes werden nur gehasht gespeichert und sind nach
-  Verwendung ungültig.
+- E-Mail-Verifizierung, Passwortwiederherstellung und sichere E-Mail-Änderung
+  verwenden die nativen, zeitlich begrenzten Authentifizierungsabläufe.
+- Die E-Mail-Adresse verbleibt im geschützten Authentifizierungsbereich und
+  wird nicht in Profil-, Bestands-, Wissens- oder Analysedaten dupliziert.
+- Authentifizierungsnachrichten verwenden neutrale Betreff- und Vorschautexte
+  ohne Cannabis-, Medizin- oder Bestandsangaben und kein Öffnungs- oder
+  Klick-Tracking.
+- Vor Produktivbetrieb sind EU-Datenregion, Auftragsverarbeitungsvertrag,
+  Unterauftragnehmer und Löschfristen geprüft und dokumentiert.
 - Kontoerstellung, Anmeldung, Wiederherstellung und manuelle Aktualisierung
   erhalten Ratenbegrenzung und Missbrauchsschutz.
 - Öffentliche Rollen besitzen keine Schreibrechte.
-- Persönliche Rollen können ausschließlich eigene Profil- und Bestandsdaten
-  lesen und ändern.
+- Persönliche Rollen können ausschließlich das eigene Profil lesen und eigene
+  Bestandsdaten lesen und ändern.
+- Hat ein Konto TOTP aktiviert, sperrt die Datenbank persönliche Daten für
+  Sitzungen ohne erfolgreich abgeschlossenen zweiten Faktor.
 - Administratorische Rechte sind getrennt und durch Mehrfaktor-
   Authentisierung geschützt.
 - Protokolle enthalten keine Passwörter, Tokens, Bestandsnotizen oder
@@ -478,8 +493,13 @@ Dateien werden nur nach einem zusätzlichen Änderungsauftrag bearbeitet.
 ### Konten und persönlicher Bestand
 
 - Alters- und Zustimmungsnachweis ohne Geburtsdatum
-- Passwort-, Wiederherstellungs- und Ratenbegrenzungsabläufe
-- optionale E-Mail ist nicht für ein Konto erforderlich
+- E-Mail-Verifizierung, Passwortwiederherstellung und Ratenbegrenzungsabläufe
+- E-Mail-Adresse erscheint weder öffentlich noch in Bestandsdaten oder
+  Analyseereignissen
+- neutrale Authentifizierungsnachrichten ohne Tracking oder inhaltlichen
+  Rückschluss auf Cannabis- oder Bestandsdaten
+- Export und Löschung verlangen eine frische Passwortbestätigung und bei
+  aktiviertem TOTP zusätzlich einen aktuellen zweiten Faktor
 - Nutzer können ausschließlich eigene Bestände lesen und ändern
 - Export und vollständige Löschung
 - persönliche Bestände beeinflussen keine öffentlichen Ergebnisse
@@ -515,8 +535,9 @@ Nachweisgrenzen nicht aufweichen.
 
 Weedypedia Version 1 ist abnahmefähig, wenn:
 
-1. ein Nutzer ein minimales pseudonymes Konto ohne Pflicht-E-Mail erstellen,
-   wiederherstellen, exportieren und löschen kann;
+1. ein Nutzer ein minimales pseudonymes Konto mit verifizierter, nicht
+   öffentlicher E-Mail-Adresse erstellen, wiederherstellen, exportieren und
+   löschen kann;
 2. eine Suche direkte Namen, Aliase und Produktzuordnungen findet und den
    Treffergrund erklärt;
 3. ein Sortenprofil Vorfahren, Nachfahren, vollständige Informationen und
