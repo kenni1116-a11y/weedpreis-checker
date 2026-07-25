@@ -1,7 +1,11 @@
 .superpowers/
 .worktrees/
+.env
+.env.local
+.env.*.local
 dist/
 node_modules/
 playwright-report/
 test-results/
 *.tsbuildinfo
+src/data/database.types.ts
