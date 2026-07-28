@@ -1,0 +1,68 @@
+{
+  "sourceId": "synthetic-contract-source",
+  "startedAt": "2026-07-28T18:00:00.000Z",
+  "completedAt": "2026-07-28T18:00:02.000Z",
+  "cursor": "synthetic-page-2",
+  "records": [
+    {
+      "externalRecordKey": "synthetic-cultivar-001",
+      "retrievedAt": "2026-07-28T18:00:01.000Z",
+      "sourceVersion": "fixture-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": {
+          "fixture": true,
+          "name": "Synthetic Cultivar One"
+        }
+      },
+      "validFrom": "2026-01-01T00:00:00.000Z",
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "name",
+          "subjectExternalKey": "synthetic-cultivar-001",
+          "name": "Synthetic Cultivar One",
+          "language": "en"
+        },
+        {
+          "kind": "alias",
+          "subjectExternalKey": "synthetic-cultivar-001",
+          "name": "Synthetic Alias One",
+          "language": "en"
+        },
+        {
+          "kind": "measurement",
+          "subjectExternalKey": "synthetic-cultivar-001",
+          "analyte": "thc",
+          "value": 21.375,
+          "unit": "percent",
+          "productForm": "flower",
+          "measuredAt": "2026-07-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-product-001",
+      "retrievedAt": "2026-07-28T18:00:02.000Z",
+      "sourceVersion": null,
+      "evidence": {
+        "kind": "checksum",
+        "algorithm": "sha256",
+        "digest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "retrievalReference": "https://example.invalid/synthetic-product-001"
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "product_cultivar",
+          "subjectExternalKey": "synthetic-product-001",
+          "cultivarExternalKey": "synthetic-cultivar-001",
+          "productForm": "flower"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

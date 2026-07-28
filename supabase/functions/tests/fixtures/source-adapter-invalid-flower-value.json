@@ -1,0 +1,33 @@
+{
+  "sourceId": "synthetic-contract-source",
+  "startedAt": "2026-07-28T18:10:00.000Z",
+  "completedAt": "2026-07-28T18:10:01.000Z",
+  "cursor": null,
+  "records": [
+    {
+      "externalRecordKey": "synthetic-flower-above-limit",
+      "retrievedAt": "2026-07-28T18:10:01.000Z",
+      "sourceVersion": "fixture-over-limit",
+      "evidence": {
+        "kind": "checksum",
+        "algorithm": "sha256",
+        "digest": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "retrievalReference": "https://example.invalid/synthetic-flower-above-limit"
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "measurement",
+          "subjectExternalKey": "synthetic-flower-above-limit",
+          "analyte": "thc",
+          "value": 70.01,
+          "unit": "percent",
+          "productForm": "flower",
+          "measuredAt": null
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
