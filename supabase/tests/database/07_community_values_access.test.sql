@@ -60,7 +60,8 @@ insert into auth.users(
 
 insert into catalog.entities(id, kind, canonical_name, published) values
   ('71000000-0000-4000-8000-000000000001', 'cultivar', 'Synthetic Community Flower', true),
-  ('71000000-0000-4000-8000-000000000002', 'product', 'Synthetic Community Extract', true);
+  ('71000000-0000-4000-8000-000000000002', 'product', 'Synthetic Community Extract', true),
+  ('71000000-0000-4000-8000-000000000003', 'product', 'Synthetic Community Flower Product', true);
 insert into api.catalog_references(
   id, kind, canonical_name, canonical_cultivar_id, is_flower
 ) values
@@ -69,7 +70,7 @@ insert into api.catalog_references(
     'cultivar',
     'Synthetic Community Flower',
     '71000000-0000-4000-8000-000000000001',
-    true
+    false
   ),
   (
     '71000000-0000-4000-8000-000000000002',
@@ -77,6 +78,13 @@ insert into api.catalog_references(
     'Synthetic Community Extract',
     '71000000-0000-4000-8000-000000000001',
     false
+  ),
+  (
+    '71000000-0000-4000-8000-000000000003',
+    'product',
+    'Synthetic Community Flower Product',
+    '71000000-0000-4000-8000-000000000001',
+    true
   );
 insert into api.inventory_items(
   id, user_id, entity_id, entry_name, quantity, unit
@@ -84,7 +92,7 @@ insert into api.inventory_items(
   (
     '72000000-0000-4000-8000-000000000001',
     '70000000-0000-4000-8000-00000000000a',
-    '71000000-0000-4000-8000-000000000001',
+    '71000000-0000-4000-8000-000000000003',
     'My Flower',
     2,
     'g'
@@ -92,7 +100,7 @@ insert into api.inventory_items(
   (
     '72000000-0000-4000-8000-000000000002',
     '70000000-0000-4000-8000-00000000000a',
-    '71000000-0000-4000-8000-000000000001',
+    '71000000-0000-4000-8000-000000000003',
     'Second jar',
     1,
     'g'
