@@ -99,7 +99,7 @@ select is(
 );
 select is(
   (select count(*) from api.catalog_references)::bigint,
-  2::bigint,
+  5::bigint,
   'authenticated users can read all seeded catalog references'
 );
 select throws_ok(

@@ -460,7 +460,6 @@ declare
   record_count integer := 0;
   assertion_count integer := 0;
   case_count integer := 0;
-  affected_count integer := 0;
   assertion_ordinality bigint;
 begin
   if not private.jsonb_has_exact_keys(
