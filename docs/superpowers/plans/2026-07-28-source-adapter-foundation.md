@@ -6,7 +6,7 @@
 
 **Architecture:** A shared Deno contract normalizes every adapter result into versioned records and typed assertions. A least-privileged `source_ingestor` database capability stores import runs, immutable source records, assertions, and review cases idempotently inside the non-exposed `catalog` schema. It cannot review or publish. A separate `source_reviewer` capability is required before an atomic publisher updates the authenticated read models and catalog-search RPC. The import function receives neither the Supabase service-role key nor the reviewer capability. This plan deliberately activates no live external source.
 
-**Tech Stack:** Node.js 24, pnpm 11.9.0, React 19.2.8, TypeScript 7.0.2, Vite 8.1.5, Vitest 4.1.10, Supabase CLI 2.109.1, Supabase Postgres 17, pgTAP, Supabase Edge Functions, Deno 2.8.1, `@supabase/supabase-js` 2.110.8, `postgres` 3.4.7 for the narrow direct-database function connection
+**Tech Stack:** Node.js 24, pnpm 11.9.0, React 19.2.8, TypeScript 7.0.2, Vite 8.1.5, Vitest 4.1.10, Supabase CLI 2.109.1, Supabase Postgres 17, Supavisor transaction pooler, pgTAP, Supabase Edge Functions, Deno 2.8.1, `@supabase/supabase-js` 2.110.8, `postgres` 3.4.9 for the narrow direct-database function connection
 
 ## Global Constraints
 
@@ -57,7 +57,7 @@ Package 2 depends on the `CatalogSearchMatch` shape and `api.search_catalog_refe
 - `supabase/tests/database/05_source_publication.test.sql`: idempotency, review gating, projection, and failed-import preservation.
 - `supabase/functions/source-import/index.ts`: internal-token ingestion endpoint backed by the narrow ingestor database login.
 - `supabase/functions/source-import/source-import.test.ts`: authorization, validation, RPC, and failure-isolation tests.
-- `supabase/config.toml`: JWT-protected `source-import` function registration.
+- `supabase/config.toml`: custom-token-protected `source-import` function registration.
 - `supabase/deno.json`: fixture-read permission for function tests.
 
 ### Public catalog contract and operations
@@ -441,8 +441,8 @@ type ImportResponse =
 
 Inject a fake Supabase RPC port and prove:
 
-- missing, malformed, anonymous, and authenticated bearer tokens return 401 or
-  403 without invoking the RPC;
+- missing, too-short, malformed, and incorrect trigger tokens return 401 or
+  403 without invoking the database function;
 - a request with the correct constant-time internal trigger token validates
   the batch before calling `private.record_source_import`;
 - malformed batches return `invalid_batch` without echoing the payload;
@@ -450,7 +450,8 @@ Inject a fake Supabase RPC port and prove:
   idempotency counts;
 - database and timeout failures return `unavailable` and log only source ID,
   run correlation ID, and error code;
-- raw payloads, names, measurement values, bearer tokens, and RPC response
+- raw payloads, names, measurement values, trigger tokens, connection URLs,
+  and database response
   bodies never enter logs.
 
 - [ ] **Step 2: Run the function test and verify failure**
@@ -490,14 +491,15 @@ export function createSourceImportHandler(
 ): (request: Request) => Promise<Response>
 ```
 
-Pin `"postgres": "npm:postgres@3.4.7"` in `supabase/deno.json` and refresh
-`supabase/deno.lock`. Configure the production client with prepared
-parameterized queries, TLS verification, a short connection timeout, and a
-pool size of one per Edge isolate.
+Pin `"postgres": "npm:postgres@3.4.9"` in `supabase/deno.json` and refresh
+`supabase/deno.lock`. Configure the production client with parameterized
+queries, TLS verification, a short connection timeout, a pool size of one per
+Edge isolate, and `prepare: false`, because Supavisor transaction mode does not
+support prepared statements.
 
 The production handler compares `X-Weedypedia-Import-Token` to the
 server-only `SOURCE_IMPORT_TRIGGER_TOKEN` in constant time. It connects through
-`SOURCE_INGESTOR_DATABASE_URL`, whose login can assume only
+`SOURCE_INGESTOR_POOLER_URL`, whose login can assume only
 `source_ingestor`, and executes the private import function in a parameterized
 query. It does not receive or use `SUPABASE_SECRET_KEY`, a service-role bearer,
 or reviewer credentials. Neither server secret appears in Vite variables,
@@ -505,13 +507,16 @@ logs, or response metadata.
 
 - [ ] **Step 4: Register the function**
 
-Keep JWT verification enabled:
+This is a service-to-service endpoint authenticated by the high-entropy
+internal trigger token rather than a user JWT. Disable the gateway JWT check so
+the request reaches the constant-time token verifier:
 
 ```toml
 [functions.source-import]
-verify_jwt = true
+verify_jwt = false
 ```
 
+Accept only `POST`, return 405 for every other method, and do not enable CORS.
 No cron or live external fetch is configured in this task.
 
 - [ ] **Step 5: Verify and commit**
