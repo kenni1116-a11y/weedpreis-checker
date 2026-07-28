@@ -6,6 +6,7 @@
   "records": [
     {
       "externalRecordKey": "synthetic-cultivar-001",
+      "upstreamState": "present",
       "retrievedAt": "2026-07-28T18:00:01.000Z",
       "sourceVersion": "fixture-1",
       "evidence": {
@@ -44,6 +45,7 @@
     },
     {
       "externalRecordKey": "synthetic-product-001",
+      "upstreamState": "present",
       "retrievedAt": "2026-07-28T18:00:02.000Z",
       "sourceVersion": null,
       "evidence": {

@@ -326,6 +326,7 @@ function adapterRecord(value: unknown, path: string): AdapterRecord {
     input,
     [
       'externalRecordKey',
+      'upstreamState',
       'retrievedAt',
       'sourceVersion',
       'evidence',
@@ -335,8 +336,19 @@ function adapterRecord(value: unknown, path: string): AdapterRecord {
     ],
     path,
   )
-  if (!Array.isArray(input.assertions) || input.assertions.length === 0) {
+  if (!Array.isArray(input.assertions)) {
+    invalid(`${path}.assertions`, 'expected an array')
+  }
+  const upstreamState = oneOf(
+    input.upstreamState,
+    ['present', 'deleted'] as const,
+    `${path}.upstreamState`,
+  )
+  if (upstreamState === 'present' && input.assertions.length === 0) {
     invalid(`${path}.assertions`, 'expected at least one assertion')
+  }
+  if (upstreamState === 'deleted' && input.assertions.length !== 0) {
+    invalid(`${path}.assertions`, 'deleted records cannot make assertions')
   }
 
   const validFrom = nullableTimestamp(input.validFrom, `${path}.validFrom`)
@@ -354,6 +366,7 @@ function adapterRecord(value: unknown, path: string): AdapterRecord {
       input.externalRecordKey,
       `${path}.externalRecordKey`,
     ),
+    upstreamState,
     retrievedAt: timestamp(input.retrievedAt, `${path}.retrievedAt`),
     sourceVersion: nullableText(
       input.sourceVersion,
@@ -436,6 +449,12 @@ export function validateAdapterBatch(input: unknown): ValidatedAdapterBatch {
 
   const reviewReasonsByRecord: Record<string, string[]> = {}
   for (const record of records) {
+    if (record.upstreamState === 'deleted') {
+      reviewReasonsByRecord[record.externalRecordKey] = [
+        'upstream_record_deleted',
+      ]
+      continue
+    }
     const hasUnrealisticFlowerValue = record.assertions.some((item) =>
       item.kind === 'measurement'
       && item.productForm === 'flower'

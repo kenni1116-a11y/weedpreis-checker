@@ -45,6 +45,21 @@ Deno.test('source adapter retains an unrealistic flower value only for review', 
   })
 })
 
+Deno.test('source adapter represents upstream deletion as review-only evidence', () => {
+  const input = cloned(validFixture) as Record<string, unknown>
+  const records = input.records as Array<Record<string, unknown>>
+  records[0].upstreamState = 'deleted'
+  records[0].assertions = []
+
+  const result = validateAdapterBatch(input)
+
+  assertEquals(result.batch.records[0].upstreamState, 'deleted')
+  assertEquals(result.batch.records[0].assertions, [])
+  assertEquals(result.reviewReasonsByRecord, {
+    'synthetic-cultivar-001': ['upstream_record_deleted'],
+  })
+})
+
 Deno.test('source adapter accepts only the closed normalized assertion contract', () => {
   const input = cloned(validFixture) as Record<string, unknown>
   const records = input.records as Array<Record<string, unknown>>

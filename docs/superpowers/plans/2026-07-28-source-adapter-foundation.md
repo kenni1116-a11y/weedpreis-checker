@@ -135,6 +135,7 @@ export type NormalizedAssertion =
 
 export type AdapterRecord = {
   externalRecordKey: string
+  upstreamState: 'present' | 'deleted'
   retrievedAt: string
   sourceVersion: string | null
   evidence: SourceEvidence
