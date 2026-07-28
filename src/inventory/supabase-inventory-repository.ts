@@ -181,20 +181,6 @@ class SupabaseInventoryRepository implements InventoryRepository {
     this.#client = client
   }
 
-  async references(signal?: AbortSignal): Promise<CatalogReference[]> {
-    throwIfAborted(signal)
-    let query = this.#client
-      .from('catalog_references')
-      .select('id,kind,canonical_name')
-      .order('canonical_name', { ascending: true })
-    if (signal) query = query.abortSignal(signal)
-
-    const result = await executeQuery(query)
-    throwIfAborted(signal)
-    if (result.error) mapError(result.error)
-    return (result.data as CatalogReferenceRow[]).map(mapReference)
-  }
-
   async list(signal?: AbortSignal): Promise<InventoryItem[]> {
     throwIfAborted(signal)
     let query = this.#client

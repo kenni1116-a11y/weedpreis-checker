@@ -387,6 +387,226 @@ img {
   gap: 12px;
 }
 
+.origin-fields,
+.compact-community-inputs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.catalog-combobox {
+  position: relative;
+  margin: 16px 0 6px;
+}
+
+.catalog-combobox > label {
+  margin: 0;
+}
+
+.combobox-results {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  right: 0;
+  left: 0;
+  max-height: min(320px, 45vh);
+  margin: 6px 0 0;
+  overflow-y: auto;
+  border: 1px solid #3e7161;
+  border-radius: 14px;
+  padding: 5px;
+  background: #0b1814;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .45);
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+.combobox-results [role="option"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 10px;
+  min-height: 52px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: #dce8e3;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.combobox-results [role="option"].is-active,
+.combobox-results [role="option"]:hover {
+  background: #1d3d32;
+}
+
+.combobox-results [role="option"] span {
+  color: #76dcb5;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.combobox-results [role="option"] small {
+  grid-column: 1 / -1;
+  color: #a9bbb4;
+}
+
+.combobox-status,
+.catalog-suggestion,
+.private-entry-hint,
+.lineage-hint {
+  margin: 7px 0;
+  color: #a9bbb4;
+  font-size: .86rem;
+  line-height: 1.4;
+}
+
+.catalog-suggestion,
+.lineage-hint {
+  color: #86ddbd;
+}
+
+.inventory-value-layers {
+  display: grid;
+  gap: 7px;
+  margin: 7px 0 9px;
+}
+
+.sourced-values,
+.community-average {
+  border: 1px solid #29453c;
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: rgba(7, 17, 15, .44);
+}
+
+.value-layer-label,
+.community-average-label {
+  color: #a9bbb4;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.compact-value-row,
+.community-average-heading,
+.cultivar-community-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+}
+
+.compact-value-row {
+  margin-top: 3px;
+  color: #e6f1ed;
+  font-size: .88rem;
+  font-weight: 720;
+}
+
+.community-average-heading {
+  gap: 5px;
+}
+
+.community-average-symbol {
+  color: #74e0b7;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.community-people-icon {
+  width: 26px;
+  height: 18px;
+  fill: none;
+  stroke: #74e0b7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.contributor-band {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #203b31;
+  color: #a7efd2;
+  font-size: .75rem;
+}
+
+.community-threshold-copy {
+  color: #a9bbb4;
+  font-size: .82rem;
+}
+
+.source-evidence {
+  margin-top: 4px;
+  color: #a9bbb4;
+  font-size: .78rem;
+}
+
+.source-evidence summary {
+  min-height: 32px;
+  padding-top: 6px;
+  color: #8fe7c7;
+  cursor: pointer;
+}
+
+.source-evidence ul {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.source-evidence li,
+.source-evidence li span {
+  display: grid;
+}
+
+.community-contribution {
+  margin-top: 12px;
+}
+
+.community-contribution legend {
+  padding: 0 5px;
+  color: #e5efeb;
+  font-weight: 760;
+}
+
+.checkbox-field {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  min-height: 44px;
+  font-weight: 550;
+}
+
+.community-value-warning {
+  margin: 8px 0 0;
+  color: #e9c985;
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.save-status {
+  border: 1px solid #34745e;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(41, 102, 80, .25);
+  color: #b8f3dc;
+}
+
+.cultivar-community-line {
+  gap: 4px 8px;
+  color: #9fb2aa;
+  font-size: .76rem;
+}
+
+.cultivar-community-line strong {
+  color: #74e0b7;
+  font-size: 1rem;
+}
+
 .inventory-list {
   display: grid;
   gap: 12px;
@@ -465,6 +685,12 @@ img {
   .inventory-form-row {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .origin-fields,
+  .compact-community-inputs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .section-header {

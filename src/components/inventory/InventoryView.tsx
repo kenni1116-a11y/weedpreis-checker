@@ -3,25 +3,38 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CatalogRepository } from '../../catalog/catalog-repository'
+import type { CommunityRepository } from '../../community/community-repository'
 import type {
-  CatalogReference,
   InventoryItem,
   ValidInventoryDraft,
 } from '../../inventory/inventory'
 import type { InventoryRepository } from '../../inventory/inventory-repository'
+import {
+  retryCommunityMutation,
+  saveInventoryEntry,
+  type PendingCommunityMutation,
+} from '../../inventory/save-inventory-entry'
 import { InventoryCard } from './InventoryCard'
 import { InventoryForm } from './InventoryForm'
 
 type InventoryViewProps = {
   repository: InventoryRepository
+  catalogRepository: CatalogRepository
+  communityRepository: CommunityRepository
+  communityConsentVersion: string
 }
 
 function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof Error ? cause.message : fallback
 }
 
-export function InventoryView({ repository }: InventoryViewProps) {
-  const [references, setReferences] = useState<CatalogReference[]>([])
+export function InventoryView({
+  repository,
+  catalogRepository,
+  communityRepository,
+  communityConsentVersion,
+}: InventoryViewProps) {
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null)
@@ -29,6 +42,9 @@ export function InventoryView({ repository }: InventoryViewProps) {
   const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
+  const [pendingCommunityMutation, setPendingCommunityMutation] =
+    useState<PendingCommunityMutation | null>(null)
   const errorRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -40,13 +56,8 @@ export function InventoryView({ repository }: InventoryViewProps) {
     setLoading(true)
     setError('')
 
-    void Promise.all([
-      repository.references(controller.signal),
-      repository.list(controller.signal),
-    ]).then(([nextReferences, nextItems]) => {
-      if (controller.signal.aborted) return
-      setReferences(nextReferences)
-      setItems(nextItems)
+    void repository.list(controller.signal).then((nextItems) => {
+      if (!controller.signal.aborted) setItems(nextItems)
     }).catch((cause: unknown) => {
       if (
         controller.signal.aborted
@@ -68,20 +79,44 @@ export function InventoryView({ repository }: InventoryViewProps) {
     setEditingItem(null)
   }
 
-  async function save(input: ValidInventoryDraft) {
+  async function save(
+    input: ValidInventoryDraft,
+    communityMutation: PendingCommunityMutation | null,
+  ) {
     setPending(true)
     setError('')
+    setStatus('')
     try {
-      if (editingItem) {
-        const updated = await repository.update(editingItem.id, input)
-        setItems((current) => current.map((item) => (
-          item.id === updated.id ? updated : item
-        )))
-      } else {
-        const created = await repository.create(input)
-        setItems((current) => [created, ...current])
-      }
+      const outcome = await saveInventoryEntry({
+        itemId: editingItem?.id,
+        draft: input,
+        communityMutation,
+        inventoryRepository: repository,
+        communityRepository,
+      })
+      setItems((current) => {
+        const exists = current.some((item) => item.id === outcome.item.id)
+        return exists
+          ? current.map((item) => (
+              item.id === outcome.item.id ? outcome.item : item
+            ))
+          : [outcome.item, ...current]
+      })
       closeForm()
+
+      if (outcome.kind === 'inventory_saved_community_failed') {
+        setPendingCommunityMutation(outcome.pendingCommunityMutation)
+        setError(
+          'Der Bestand wurde gespeichert. Der Community-Beitrag konnte nicht übernommen werden.',
+        )
+      } else {
+        setPendingCommunityMutation(null)
+        setStatus(
+          outcome.community === 'saved'
+            ? 'Gespeichert. Der Community-Mittelwert wird später aktualisiert.'
+            : 'Gespeichert.',
+        )
+      }
     } catch (cause) {
       setError(errorMessage(
         cause,
@@ -92,10 +127,34 @@ export function InventoryView({ repository }: InventoryViewProps) {
     }
   }
 
+  async function retryCommunity() {
+    if (!pendingCommunityMutation) return
+    setPending(true)
+    setError('')
+    try {
+      await retryCommunityMutation(
+        pendingCommunityMutation,
+        communityRepository,
+      )
+      setPendingCommunityMutation(null)
+      setStatus(
+        'Gespeichert. Der Community-Mittelwert wird später aktualisiert.',
+      )
+    } catch (cause) {
+      setError(errorMessage(
+        cause,
+        'Der Community-Beitrag konnte nicht übernommen werden.',
+      ))
+    } finally {
+      setPending(false)
+    }
+  }
+
   async function confirmDelete() {
     if (!deletingItem) return
     setPending(true)
     setError('')
+    setStatus('')
     try {
       await repository.remove(deletingItem.id)
       setItems((current) => current.filter(
@@ -126,6 +185,7 @@ export function InventoryView({ repository }: InventoryViewProps) {
               setEditingItem(null)
               setFormOpen(true)
               setError('')
+              setStatus('')
             }}
           >
             Eintrag hinzufügen
@@ -133,9 +193,7 @@ export function InventoryView({ repository }: InventoryViewProps) {
         ) : null}
       </header>
 
-      <p>
-        Deine Einträge sind privat und nur in deinem Konto sichtbar.
-      </p>
+      <p>Deine Einträge sind privat und nur in deinem Konto sichtbar.</p>
 
       {error ? (
         <div
@@ -147,6 +205,16 @@ export function InventoryView({ repository }: InventoryViewProps) {
           {error}
         </div>
       ) : null}
+      {status ? <p role="status" className="save-status">{status}</p> : null}
+      {pendingCommunityMutation ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => void retryCommunity()}
+        >
+          Community-Beitrag erneut versuchen
+        </button>
+      ) : null}
 
       {loading ? (
         <p role="status" aria-label="Privater Bestand wird geladen">
@@ -157,7 +225,9 @@ export function InventoryView({ repository }: InventoryViewProps) {
       {formOpen ? (
         <InventoryForm
           key={editingItem?.id ?? 'new'}
-          references={references}
+          catalogRepository={catalogRepository}
+          communityRepository={communityRepository}
+          communityConsentVersion={communityConsentVersion}
           item={editingItem ?? undefined}
           pending={pending}
           onSubmit={save}
@@ -172,8 +242,8 @@ export function InventoryView({ repository }: InventoryViewProps) {
         >
           <h3 id="delete-inventory-heading">Eintrag wirklich löschen?</h3>
           <p>
-            {deletingItem.entryName} wird dauerhaft aus deinem
-            privaten Bestand entfernt.
+            {deletingItem.entryName} wird dauerhaft aus deinem privaten
+            Bestand entfernt.
           </p>
           <div className="form-actions">
             <button
@@ -207,10 +277,12 @@ export function InventoryView({ repository }: InventoryViewProps) {
               setEditingItem(item)
               setFormOpen(true)
               setError('')
+              setStatus('')
             }}
             onDelete={() => {
               setDeletingItem(item)
               setError('')
+              setStatus('')
             }}
           />
         ))}

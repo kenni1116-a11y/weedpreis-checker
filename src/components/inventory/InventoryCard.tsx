@@ -31,14 +31,35 @@ export function InventoryCard({
                 : 'Privater Eintrag'}
           </p>
           <h3>{item.entryName}</h3>
+          {item.reference
+            && item.reference.canonicalName !== item.entryName ? (
+              <small>Kanonisch: {item.reference.canonicalName}</small>
+            ) : null}
         </div>
         <strong>
           {quantityFormatter.format(item.quantity)} {unitLabel(item)}
         </strong>
       </header>
 
-      {item.batch || item.expiresOn || item.storageLocation || item.note ? (
+      {item.originOneName
+        || item.originTwoName
+        || item.batch
+        || item.expiresOn
+        || item.storageLocation
+        || item.note ? (
         <dl>
+          {item.originOneName ? (
+            <>
+              <dt>Herkunft 1</dt>
+              <dd>{item.originOneName}</dd>
+            </>
+          ) : null}
+          {item.originTwoName ? (
+            <>
+              <dt>Herkunft 2</dt>
+              <dd>{item.originTwoName}</dd>
+            </>
+          ) : null}
           {item.batch ? (
             <>
               <dt>Charge</dt>
