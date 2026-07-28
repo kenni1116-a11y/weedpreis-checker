@@ -6,9 +6,11 @@ Anwendung dient ausschließlich der Produktentwicklung und stellt keine
 medizinische Beratung dar.
 
 Der aktuelle Zwischenstand enthält das verifizierte pseudonyme Konto, optionale
-TOTP-Absicherung und den privaten persönlichen Bestand. Die Bereiche Entdecken
-und Suche bleiben bis zur nächsten freigegebenen, quellenbasierten Datenetappe
-als klar gekennzeichnete Vorschau sichtbar. Die frühere Preisvergleichsrichtung
+TOTP-Absicherung, den privaten persönlichen Bestand und die technische
+Grundlage für eine quellenbasierte Sortensuche. Externe Aussagen werden
+unveränderlich gespeichert, separat geprüft und erst danach atomar mit
+öffentlichen Nachweisen veröffentlicht. Die Oberfläche nutzt vorerst weiterhin
+klar gekennzeichnete synthetische Daten. Die frühere Preisvergleichsrichtung
 ist in der Anwendung nicht mehr erreichbar.
 
 ## Lokal starten
@@ -67,6 +69,13 @@ Wenn ein Auftrag nur „Überprüfen“ lautet, ist damit eine reine, lesende Pr
 
 ## Daten
 
-Bis zum Wissensgraphen werden ausschließlich als Testdaten gekennzeichnete
-synthetische Katalogreferenzen verwendet. Reale Quellen werden erst nach
-dokumentierter Nutzungserlaubnis angebunden.
+Bis zur Freigabe eines ersten Quellenadapters werden ausschließlich als
+Testdaten gekennzeichnete synthetische Katalogreferenzen verwendet. Auch diese
+durchlaufen Import, Review und Publisher; direkte öffentliche Seed-Schreibwege
+gibt es nicht mehr.
+
+Reale Quellen werden nur einzeln nach dokumentierter Nutzungserlaubnis,
+separater Bildrechteprüfung, synthetischem Vertragstest und einem
+veröffentlichungsfreien Pilotimport angebunden. Das verbindliche Gate und der
+Rollback-Ablauf stehen in
+[docs/operations/weedypedia-source-onboarding.md](docs/operations/weedypedia-source-onboarding.md).
