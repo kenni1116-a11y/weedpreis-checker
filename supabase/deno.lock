@@ -4,7 +4,8 @@
     "jsr:@std/assert@1.0.18": "1.0.18",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@supabase/server@1.4.1": "1.4.1_@supabase+supabase-js@2.110.8",
-    "npm:@supabase/supabase-js@2.110.8": "2.110.8"
+    "npm:@supabase/supabase-js@2.110.8": "2.110.8",
+    "npm:postgres@3.4.9": "3.4.9"
   },
   "jsr": {
     "@std/assert@1.0.18": {
@@ -76,6 +77,9 @@
     "jose@6.2.4": {
       "integrity": "sha512-N8acGzVsQy6M/fjFcxtysNc4Q379TcM5dM/qKkNtsHFji88yANnXTr7BLeP75iPnFwBfQzM/jg2BZ9+HZrHCZA=="
     },
+    "postgres@3.4.9": {
+      "integrity": "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="
+    },
     "tslib@2.8.1": {
       "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="
     }
@@ -84,7 +88,8 @@
     "dependencies": [
       "jsr:@std/assert@1.0.18",
       "npm:@supabase/server@1.4.1",
-      "npm:@supabase/supabase-js@2.110.8"
+      "npm:@supabase/supabase-js@2.110.8",
+      "npm:postgres@3.4.9"
     ]
   }
 }
