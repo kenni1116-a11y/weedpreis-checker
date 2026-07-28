@@ -46,11 +46,13 @@ function client(overrides: Record<string, unknown> = {}) {
   const profile = query({ data: { username: 'User.One' }, error: null })
   const receipts = query({ data: [], error: null })
   const inventory = query({ data: [], error: null })
+  const community = query({ data: [], error: null })
   const from = vi.fn((table: string) => {
     if (table === 'profiles') return profile
     if (table === 'consent_receipts') return receipts
     return inventory
   })
+  const rpc = vi.fn(() => community)
 
   const auth = {
     signUp: vi.fn().mockResolvedValue({ data: {}, error: null }),
@@ -102,7 +104,16 @@ function client(overrides: Record<string, unknown> = {}) {
     invoke: vi.fn().mockResolvedValue({ data: null, error: null }),
   }
 
-  const result = { auth, from, functions, profile, receipts, inventory }
+  const result = {
+    auth,
+    from,
+    rpc,
+    functions,
+    profile,
+    receipts,
+    inventory,
+    community,
+  }
   Object.assign(result, overrides)
   return result
 }
@@ -367,7 +378,7 @@ describe('createSupabaseAuthService', () => {
     expect(proof.auth.signOut).toHaveBeenCalled()
   })
 
-  it('exports only the approved account, consent, and inventory fields', async () => {
+  it('exports only approved own account, inventory, and community fields', async () => {
     const active = client()
     const proof = client()
     proof.profile = query({ data: { username: 'User.One' }, error: null })
@@ -399,11 +410,27 @@ describe('createSupabaseAuthService', () => {
       ],
       error: null,
     })
+    proof.community = query({
+      data: [
+        {
+          cultivar_id: '51000000-0000-4000-8000-000000000001',
+          cultivar_name: 'Synthetic Cultivar',
+          thc_percent: '21.30',
+          cbd_percent: '0.70',
+          source_kind: 'laboratory',
+          consent_version: config.communityValuesConsentVersion,
+          created_at: '2026-07-28T12:00:00Z',
+          updated_at: '2026-07-28T13:00:00Z',
+        },
+      ],
+      error: null,
+    })
     proof.from.mockImplementation((table: string) => {
       if (table === 'profiles') return proof.profile
       if (table === 'consent_receipts') return proof.receipts
       return proof.inventory
     })
+    proof.rpc.mockImplementation(() => proof.community)
     const service = createSupabaseAuthService({
       client: active,
       createProofClient: () => proof,
@@ -445,9 +472,28 @@ describe('createSupabaseAuthService', () => {
           updatedAt: '2026-07-25T12:00:00Z',
         },
       ],
+      communityFlowerContributions: [
+        {
+          cultivarId: '51000000-0000-4000-8000-000000000001',
+          cultivarName: 'Synthetic Cultivar',
+          thcPercent: 21.3,
+          cbdPercent: 0.7,
+          sourceKind: 'laboratory',
+          consentVersion: config.communityValuesConsentVersion,
+          createdAt: '2026-07-28T12:00:00Z',
+          updatedAt: '2026-07-28T13:00:00Z',
+        },
+      ],
     })
+    expect(proof.rpc).toHaveBeenCalledTimes(1)
+    expect(proof.rpc).toHaveBeenCalledWith(
+      'export_my_community_flower_contributions',
+    )
+    expect(proof.from).not.toHaveBeenCalledWith(
+      'community_flower_contributions',
+    )
     expect(JSON.stringify(exported)).not.toMatch(
-      /password|access_token|raw_user_meta_data|role/i,
+      /password|access_token|raw_user_meta_data|role|contributor_count|review_status/i,
     )
     expect(proof.auth.signOut).toHaveBeenCalled()
   })

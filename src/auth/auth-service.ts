@@ -80,6 +80,16 @@ export type AccountExport = {
     createdAt: string
     updatedAt: string
   }>
+  communityFlowerContributions: Array<{
+    cultivarId: string
+    cultivarName: string
+    thcPercent: number
+    cbdPercent: number
+    sourceKind: CommunityValueSource
+    consentVersion: string
+    createdAt: string
+    updatedAt: string
+  }>
 }
 
 export interface AuthService {
@@ -98,3 +108,4 @@ export interface AuthService {
   exportAccount(proof: SensitiveActionProof): Promise<AccountExport>
   deleteAccount(input: DeleteAccountInput): Promise<void>
 }
+import type { CommunityValueSource } from '../community/community-values'

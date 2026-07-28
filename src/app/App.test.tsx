@@ -3,9 +3,38 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AuthState } from '../auth/auth-service'
 import { createInMemoryAuthService } from '../auth/in-memory-auth-service'
+import { InMemoryCatalogRepository } from '../catalog/in-memory-catalog-repository'
+import { InMemoryCommunityRepository } from '../community/in-memory-community-repository'
 import type { RuntimeConfig } from '../config/runtime-config'
 import { InMemoryInventoryRepository } from '../inventory/in-memory-inventory-repository'
 import { App } from './App'
+
+const browserFactories = vi.hoisted(() => ({
+  createClient: vi.fn(),
+  createAuthService: vi.fn(),
+  createCatalogRepository: vi.fn(),
+  createCommunityRepository: vi.fn(),
+  createInventoryRepository: vi.fn(),
+}))
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: browserFactories.createClient,
+}))
+vi.mock('../auth/supabase-auth-service', () => ({
+  createSupabaseAuthService: browserFactories.createAuthService,
+}))
+vi.mock('../catalog/supabase-catalog-repository', () => ({
+  createSupabaseCatalogRepository:
+    browserFactories.createCatalogRepository,
+}))
+vi.mock('../community/supabase-community-repository', () => ({
+  createSupabaseCommunityRepository:
+    browserFactories.createCommunityRepository,
+}))
+vi.mock('../inventory/supabase-inventory-repository', () => ({
+  createSupabaseInventoryRepository:
+    browserFactories.createInventoryRepository,
+}))
 
 const config: RuntimeConfig = {
   supabaseUrl: 'https://example.supabase.co',
@@ -33,13 +62,19 @@ function renderApp(state: AuthState) {
     initialState: state,
     factors: state.status === 'mfa-required' ? state.factors : [],
   })
+  const catalogRepository = new InMemoryCatalogRepository()
+  const communityRepository = new InMemoryCommunityRepository()
   const inventoryRepository = new InMemoryInventoryRepository()
   return {
     authService,
+    catalogRepository,
+    communityRepository,
     inventoryRepository,
     ...render(
       <App
         authService={authService}
+        catalogRepository={catalogRepository}
+        communityRepository={communityRepository}
         inventoryRepository={inventoryRepository}
         config={config}
       />,
@@ -51,7 +86,67 @@ describe('App', () => {
   afterEach(() => {
     cleanup()
     localStorage.clear()
+    vi.clearAllMocks()
     vi.restoreAllMocks()
+  })
+
+  it('builds all browser repositories from one API-schema client', async () => {
+    const sharedClient = { kind: 'shared-api-client' }
+    const authService = createInMemoryAuthService({
+      initialState: signedInState,
+    })
+    const catalogRepository = new InMemoryCatalogRepository()
+    const communityRepository = new InMemoryCommunityRepository()
+    const inventoryRepository = new InMemoryInventoryRepository()
+    browserFactories.createClient.mockReturnValue(sharedClient)
+    browserFactories.createAuthService.mockReturnValue(authService)
+    browserFactories.createCatalogRepository.mockReturnValue(
+      catalogRepository,
+    )
+    browserFactories.createCommunityRepository.mockReturnValue(
+      communityRepository,
+    )
+    browserFactories.createInventoryRepository.mockReturnValue(
+      inventoryRepository,
+    )
+
+    render(<App config={config} />)
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Weedypedia' },
+    )).toBeInTheDocument()
+    expect(browserFactories.createClient).toHaveBeenCalledTimes(1)
+    expect(browserFactories.createClient).toHaveBeenCalledWith(
+      config.supabaseUrl,
+      config.supabasePublishableKey,
+      expect.objectContaining({ db: { schema: 'api' } }),
+    )
+    for (const factory of [
+      browserFactories.createCatalogRepository,
+      browserFactories.createCommunityRepository,
+      browserFactories.createInventoryRepository,
+    ]) {
+      expect(factory).toHaveBeenCalledWith({ client: sharedClient })
+    }
+    expect(browserFactories.createAuthService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: sharedClient,
+        config,
+      }),
+    )
+  })
+
+  it('rejects incomplete dependency injection explicitly', () => {
+    const authService = createInMemoryAuthService({
+      initialState: signedInState,
+    })
+
+    expect(() => render(
+      <App authService={authService} config={config} />,
+    )).toThrow(
+      'Auth-Service, Bestands-, Katalog- und Community-Repository müssen gemeinsam gesetzt werden.',
+    )
   })
 
   it('identifies itself as Weedypedia after authentication', async () => {
@@ -88,6 +183,8 @@ describe('App', () => {
     render(
       <App
         authService={authService}
+        catalogRepository={new InMemoryCatalogRepository()}
+        communityRepository={new InMemoryCommunityRepository()}
         inventoryRepository={new InMemoryInventoryRepository()}
         config={config}
       />,
@@ -120,7 +217,7 @@ describe('App', () => {
   })
 
   it('requires TOTP before showing private tabs', async () => {
-    renderApp({
+    const { communityRepository } = renderApp({
       status: 'mfa-required',
       email: 'test@example.invalid',
       factors: [{
@@ -129,6 +226,8 @@ describe('App', () => {
         status: 'verified',
       }],
     })
+    const getOwn = vi.spyOn(communityRepository, 'getOwn')
+    const getPublished = vi.spyOn(communityRepository, 'getPublished')
 
     expect(await screen.findByRole(
       'heading',
@@ -138,6 +237,8 @@ describe('App', () => {
       'button',
       { name: 'Bestand' },
     )).not.toBeInTheDocument()
+    expect(getOwn).not.toHaveBeenCalled()
+    expect(getPublished).not.toHaveBeenCalled()
   })
 
   it('opens the private inventory and account profile tabs', async () => {

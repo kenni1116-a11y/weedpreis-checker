@@ -65,6 +65,7 @@ function defaultExport(): AccountExport {
     },
     consents: [],
     inventory: [],
+    communityFlowerContributions: [],
   }
 }
 

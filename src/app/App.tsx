@@ -11,6 +11,16 @@ import { AuthGate } from '../components/auth/AuthGate'
 import { AppNavigation, type AppTab } from '../components/AppNavigation'
 import { FoundationNotice } from '../components/FoundationNotice'
 import { InventoryView } from '../components/inventory/InventoryView'
+import type { CatalogRepository } from '../catalog/catalog-repository'
+import {
+  createSupabaseCatalogRepository,
+  type SupabaseCatalogClientPort,
+} from '../catalog/supabase-catalog-repository'
+import type { CommunityRepository } from '../community/community-repository'
+import {
+  createSupabaseCommunityRepository,
+  type SupabaseCommunityClientPort,
+} from '../community/supabase-community-repository'
 import {
   readRuntimeConfig,
   type RuntimeConfig,
@@ -23,12 +33,16 @@ import {
 
 type AppProps = {
   authService?: AuthService
+  catalogRepository?: CatalogRepository
+  communityRepository?: CommunityRepository
   inventoryRepository?: InventoryRepository
   config?: RuntimeConfig
 }
 
 type AppDependencies = {
   authService: AuthService
+  catalogRepository: CatalogRepository
+  communityRepository: CommunityRepository
   inventoryRepository: InventoryRepository
   config: RuntimeConfig
 }
@@ -65,6 +79,12 @@ function createBrowserDependencies(config: RuntimeConfig): AppDependencies {
         },
       ) as unknown as SupabaseClientPort,
     }),
+    catalogRepository: createSupabaseCatalogRepository({
+      client: client as unknown as SupabaseCatalogClientPort,
+    }),
+    communityRepository: createSupabaseCommunityRepository({
+      client: client as unknown as SupabaseCommunityClientPort,
+    }),
     inventoryRepository: createSupabaseInventoryRepository({
       client: client as unknown as SupabaseInventoryClientPort,
     }),
@@ -73,24 +93,48 @@ function createBrowserDependencies(config: RuntimeConfig): AppDependencies {
 
 function resolveDependencies({
   authService,
+  catalogRepository,
+  communityRepository,
   inventoryRepository,
   config,
 }: AppProps): AppDependencies {
   const activeConfig = config ?? readRuntimeConfig(import.meta.env)
-  if (authService && inventoryRepository) {
-    return { authService, inventoryRepository, config: activeConfig }
+  if (
+    authService
+    && catalogRepository
+    && communityRepository
+    && inventoryRepository
+  ) {
+    return {
+      authService,
+      catalogRepository,
+      communityRepository,
+      inventoryRepository,
+      config: activeConfig,
+    }
   }
-  if (authService || inventoryRepository) {
+  if (
+    authService
+    || catalogRepository
+    || communityRepository
+    || inventoryRepository
+  ) {
     throw new Error(
-      'Auth-Service und Bestands-Repository müssen gemeinsam gesetzt werden.',
+      'Auth-Service, Bestands-, Katalog- und Community-Repository müssen gemeinsam gesetzt werden.',
     )
   }
   return createBrowserDependencies(activeConfig)
 }
 
 function WeedypediaShell({
+  catalogRepository,
+  communityRepository,
+  communityConsentVersion,
   inventoryRepository,
 }: {
+  catalogRepository: CatalogRepository
+  communityRepository: CommunityRepository
+  communityConsentVersion: string
   inventoryRepository: InventoryRepository
 }) {
   const [tab, setTab] = useState<AppTab>('discover')
@@ -113,7 +157,12 @@ function WeedypediaShell({
           <FoundationNotice title="Suche" />
         ) : null}
         {tab === 'inventory' ? (
-          <InventoryView repository={inventoryRepository} />
+          <InventoryView
+            repository={inventoryRepository}
+            catalogRepository={catalogRepository}
+            communityRepository={communityRepository}
+            communityConsentVersion={communityConsentVersion}
+          />
         ) : null}
         {tab === 'profile' ? <AccountSettings /> : null}
       </div>
@@ -126,6 +175,8 @@ export function App(props: AppProps = {}) {
     () => resolveDependencies(props),
     [
       props.authService,
+      props.catalogRepository,
+      props.communityRepository,
       props.config,
       props.inventoryRepository,
     ],
@@ -139,6 +190,11 @@ export function App(props: AppProps = {}) {
           termsVersion={dependencies.config.termsVersion}
         >
           <WeedypediaShell
+            catalogRepository={dependencies.catalogRepository}
+            communityRepository={dependencies.communityRepository}
+            communityConsentVersion={
+              dependencies.config.communityValuesConsentVersion
+            }
             inventoryRepository={dependencies.inventoryRepository}
           />
         </AuthGate>

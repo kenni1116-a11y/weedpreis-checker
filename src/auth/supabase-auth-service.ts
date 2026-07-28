@@ -119,6 +119,7 @@ export type SupabaseClientPort = {
     }
   }
   from(table: string): QueryPort
+  rpc(name: string, values?: Record<string, unknown>): QueryPort
   functions: {
     invoke(
       functionName: string,
@@ -162,6 +163,17 @@ type InventoryRow = {
     | { canonical_name: string }
     | Array<{ canonical_name: string }>
     | null
+}
+
+type CommunityContributionRow = {
+  cultivar_id: string
+  cultivar_name: string
+  thc_percent: number | string
+  cbd_percent: number | string
+  source_kind: 'label' | 'laboratory'
+  consent_version: string
+  created_at: string
+  updated_at: string
 }
 
 const GENERIC_LOGIN_ERROR =
@@ -427,6 +439,11 @@ class SupabaseAuthService implements AuthService {
       )
       ensureNoError(inventoryResult.error)
 
+      const communityResult = await executeQuery<CommunityContributionRow[]>(
+        proofClient.rpc('export_my_community_flower_contributions'),
+      )
+      ensureNoError(communityResult.error)
+
       return {
         exportedAt: this.#now().toISOString(),
         account: {
@@ -453,6 +470,18 @@ class SupabaseAuthService implements AuthService {
           createdAt: item.created_at,
           updatedAt: item.updated_at,
         })),
+        communityFlowerContributions: communityResult.data.map(
+          (contribution) => ({
+            cultivarId: contribution.cultivar_id,
+            cultivarName: contribution.cultivar_name,
+            thcPercent: Number(contribution.thc_percent),
+            cbdPercent: Number(contribution.cbd_percent),
+            sourceKind: contribution.source_kind,
+            consentVersion: contribution.consent_version,
+            createdAt: contribution.created_at,
+            updatedAt: contribution.updated_at,
+          }),
+        ),
       }
     })
   }
