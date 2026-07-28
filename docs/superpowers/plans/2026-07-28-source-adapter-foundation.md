@@ -262,6 +262,7 @@ git commit -m "feat: define source adapter contract"
 - `catalog.assertion_reviews`
 - `private.record_source_import(p_batch jsonb)`
 - `private.review_source_assertion(p_assertion_id uuid, p_decision text, p_entity_id uuid, p_related_entity_id uuid, p_note text)`
+- `private.review_source_record_deletion(p_source_record_id uuid, p_decision text, p_note text)`
 
 - [ ] **Step 1: Create the migration filename**
 
@@ -389,6 +390,12 @@ p_note
 4. require both canonical entities for accepted lineage/product links;
 5. record reviewer and timestamp without altering the assertion;
 6. close related review cases only after a decision exists.
+
+`private.review_source_record_deletion(uuid, text, text)` is also executable
+only by `source_reviewer`. It can close only an
+`upstream_record_deleted` case, records accepted/rejected plus reviewer,
+timestamp, and note on that case, and never deletes a published entity by
+itself.
 
 Revoke all function rights first, then grant import execute only to
 `source_ingestor` and review execute only to `source_reviewer`. Do not grant
