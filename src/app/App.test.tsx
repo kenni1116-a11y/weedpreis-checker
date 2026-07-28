@@ -12,6 +12,8 @@ const config: RuntimeConfig = {
   supabasePublishableKey: 'sb_publishable_test',
   privacyVersion: 'weedypedia-privacy-2026-07-25',
   termsVersion: 'weedypedia-terms-2026-07-25',
+  communityValuesConsentVersion:
+    'weedypedia-community-values-2026-07-28',
   authRedirectUrl: 'https://example.invalid/auth/callback',
 }
 

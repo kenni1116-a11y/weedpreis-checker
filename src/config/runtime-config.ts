@@ -3,6 +3,7 @@ export type RuntimeConfig = {
   supabasePublishableKey: string
   privacyVersion: string
   termsVersion: string
+  communityValuesConsentVersion: string
   authRedirectUrl: string
 }
 
@@ -35,6 +36,10 @@ export function readRuntimeConfig(env: RuntimeEnv): RuntimeConfig {
     supabasePublishableKey,
     privacyVersion: required(env, 'VITE_PRIVACY_VERSION'),
     termsVersion: required(env, 'VITE_TERMS_VERSION'),
+    communityValuesConsentVersion: required(
+      env,
+      'VITE_COMMUNITY_VALUES_CONSENT_VERSION',
+    ),
     authRedirectUrl: absoluteUrl(env, 'VITE_AUTH_REDIRECT_URL'),
   }
 }
