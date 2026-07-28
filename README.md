@@ -6,12 +6,13 @@ Anwendung dient ausschließlich der Produktentwicklung und stellt keine
 medizinische Beratung dar.
 
 Der aktuelle Zwischenstand enthält das verifizierte pseudonyme Konto, optionale
-TOTP-Absicherung, den privaten persönlichen Bestand und die technische
-Grundlage für eine quellenbasierte Sortensuche. Externe Aussagen werden
-unveränderlich gespeichert, separat geprüft und erst danach atomar mit
-öffentlichen Nachweisen veröffentlicht. Die Oberfläche nutzt vorerst weiterhin
-klar gekennzeichnete synthetische Daten. Die frühere Preisvergleichsrichtung
-ist in der Anwendung nicht mehr erreichbar.
+TOTP-Absicherung, den privaten persönlichen Bestand, eine quellenbasierte
+Sortensuche mit editierbarer Herkunft sowie freiwillige Community-Mittelwerte
+für Blüten. Externe Aussagen werden unveränderlich gespeichert, separat geprüft
+und erst danach atomar mit öffentlichen Nachweisen veröffentlicht. Private
+Namen und Herkunftsangaben verändern diesen Katalog nicht. Die Oberfläche nutzt
+vorerst weiterhin klar gekennzeichnete synthetische Daten. Die frühere
+Preisvergleichsrichtung ist in der Anwendung nicht mehr erreichbar.
 
 ## Lokal starten
 
@@ -57,6 +58,14 @@ Auftragsverarbeitung, SMTP, RLS sowie Export und Löschung freigegeben sind. Ein
 Browser-Build allein aktiviert keine Registrierung; die Freigabe erfolgt erst
 nach dem dokumentierten Betriebs- und Sicherheitstest über die serverseitige
 Supabase-Konfiguration.
+
+Community-Werte werden nur für zugeordnete Blüten und nur als vollständiges
+THC-/CBD-Paar vom Etikett oder aus einem Laborbericht angenommen. Pro Konto und
+Sorte bleibt ein aktueller Wert; veröffentlicht werden erst ab fünf
+verschiedenen Konten ein auf eine Nachkommastelle gerundeter Mittelwert und ein
+grobes Band (`5+`, `10+`, `25+`, `50+`). Rohwerte und exakte Beitragendenzahlen
+bleiben privat. Preis, Rezept-, Gesundheits- und Konsumdaten sowie Scanner oder
+Fotoerkennung gehören nicht zu diesem Stand.
 
 Die verbindliche Freigabe-, Rollback- und Vorfallcheckliste steht in
 [docs/operations/weedypedia-account-activation.md](docs/operations/weedypedia-account-activation.md).

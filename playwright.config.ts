@@ -57,6 +57,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     ...devices['iPhone 14'],
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -71,6 +72,8 @@ export default defineConfig({
       VITE_SUPABASE_PUBLISHABLE_KEY: anonKey,
       VITE_PRIVACY_VERSION: 'weedypedia-privacy-2026-07-25',
       VITE_TERMS_VERSION: 'weedypedia-terms-2026-07-25',
+      VITE_COMMUNITY_VALUES_CONSENT_VERSION:
+        'weedypedia-community-values-2026-07-28',
       VITE_AUTH_REDIRECT_URL: 'http://127.0.0.1:4173/auth/callback',
     },
   },

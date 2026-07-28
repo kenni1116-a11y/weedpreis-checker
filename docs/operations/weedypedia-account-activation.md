@@ -20,6 +20,7 @@ GitHub Pages erhält nur:
 - `SUPABASE_PUBLISHABLE_KEY`
 - `PRIVACY_VERSION`
 - `TERMS_VERSION`
+- `COMMUNITY_VALUES_CONSENT_VERSION`
 - `AUTH_REDIRECT_URL`
 
 Der Pages-Workflow ordnet diese Werte den gleichnamigen `VITE_`-Variablen zu
@@ -45,6 +46,10 @@ Jeder Punkt benötigt einen Beleglink oder ein abgelegtes Prüfartefakt.
 - [ ] Datenschutzerklärung, Nutzungsbedingungen und Wortlaut der
   18+-Bestätigung rechtlich freigegeben; aktive Versionskennungen stimmen mit
   der Datenbank überein.
+- [ ] Die freiwillige Community-Einwilligung
+  `weedypedia-community-values-2026-07-28` einschließlich Zweck,
+  Widerruf, Export, Löschung und des Wortlauts „Etikett oder Laborbericht,
+  nicht geschätzt“ ist rechtlich und datenschutzfachlich freigegeben.
 - [ ] Eigener SMTP-Anbieter einschließlich Auftragsverarbeitung freigegeben.
 - [ ] SMTP-Öffnungs- und Klicktracking deaktiviert.
 - [ ] Datenminimierte Auth-E-Mails geprüft: Betreff und Vorschautext enthalten
@@ -73,13 +78,21 @@ Jeder Punkt benötigt einen Beleglink oder ein abgelegtes Prüfartefakt.
   und neuer Adresse.
 - [ ] Export verlangt eine höchstens fünf Minuten alte isolierte
   Passwortsitzung und bei verifiziertem TOTP zusätzlich AAL2.
-- [ ] Exportstichprobe enthält nur Konto, Einwilligungsbelege und Bestand; kein
-  Passwort, Token, Auth-Metadatum oder interne Rolle.
+- [ ] Exportstichprobe enthält nur Konto, Einwilligungsbelege, Bestand und die
+  aktuellen eigenen Community-Blütenwerte; kein fremder Wert, öffentlicher
+  exakter Zähler, Passwort, Token, Auth-Metadatum oder interne Rolle.
 - [ ] Löschung verlangt normalisierten Benutzernamen, zweite Bestätigung,
   höchstens fünf Minuten alten Passwortnachweis und bei verifiziertem TOTP
   zusätzlich AAL2.
-- [ ] Löschstichprobe bestätigt: Auth-Nutzer, Profil, Einwilligungen und
-  Bestände sind entfernt; erneute Anmeldung und API-Zugriff scheitern.
+- [ ] Löschstichprobe bestätigt: Auth-Nutzer, Profil, Einwilligungen, Bestände
+  und Community-Beiträge sind entfernt; erneute Anmeldung und API-Zugriff
+  scheitern.
+- [ ] Vier synthetische Beitragende veröffentlichen keinen Mittelwert; ab fünf
+  erscheint ausschließlich das Band `5+`, niemals eine exakte Anzahl.
+- [ ] Browserrollen können die Rohwerttabelle weder über REST noch über RPC
+  oder RLS lesen.
+- [ ] Der sechs-stündliche Aggregationsjob ist aktiv und sein letzter Lauf
+  wurde geprüft.
 - [ ] Backup erstellt und eine Wiederherstellung in eine getrennte
   Testumgebung erfolgreich geprüft.
 - [ ] iPhone-WebKit-Prüfung bestätigt dunkle Statusleiste, Safe Areas,
@@ -129,12 +142,71 @@ Aufzubewahrende Freigabebelege:
 Belege dürfen keine Passwörter, TOTP-Geheimnisse, Codes, Token oder Secret Keys
 enthalten.
 
+## Community-Blütenwerte und Aggregation
+
+Community-Werte sind freiwillig, gelten ausschließlich für zugeordnete Blüten
+und müssen als vollständiges THC-/CBD-Paar vom Etikett oder aus einem
+Laborbericht stammen. Werte über 70 Prozent werden im Browser und in der
+Datenbank abgewiesen. Pro Konto und kanonischer Sorte existiert nur der jeweils
+aktuelle Beitrag; eine neue Angabe ersetzt die vorherige. Der freigegebene
+Wortlaut und die aktive Einwilligungsversion lauten:
+
+- `weedypedia-community-values-2026-07-28`
+- „Keine Fantasiewerte. Bitte AUSSCHLIESSLICH die Werte des Labels oder eines
+  Laborberichts angeben.“
+
+Der produktive Einsatz benötigt vor Aktivierung eine erneute rechtliche und
+datenschutzfachliche Prüfung dieses Wortlauts. Ein Scanner, Foto-Upload oder
+eine automatische Etiketterkennung gehört nur zum Backlog und ist nicht Teil
+dieser Freigabe.
+
+Der Datenbankjob
+`weedypedia-community-flower-averages-six-hourly` läuft bei Minute 17 alle
+sechs Stunden. Konfiguration und letzte Läufe werden als Datenbank-Owner
+geprüft:
+
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'weedypedia-community-flower-averages-six-hourly';
+
+select jobid, status, start_time, end_time, return_message
+from cron.job_run_details
+where jobid = (
+  select jobid
+  from cron.job
+  where jobname = 'weedypedia-community-flower-averages-six-hourly'
+)
+order by start_time desc
+limit 10;
+```
+
+Eine kontrollierte manuelle Aktualisierung darf ausschließlich der
+Datenbank-Owner ausführen:
+
+```sql
+select private.refresh_community_flower_averages();
+```
+
+Der Download nach frischem Passwort- und gegebenenfalls TOTP-Nachweis enthält
+nur die aktuellen Beiträge des anfragenden Kontos. Das Löschen des letzten
+passenden Blüten-Bestandseintrags entfernt den Beitrag; die Kontolöschung
+entfernt Bestand und Beiträge über serverseitige Fremdschlüssel-Kaskaden.
+
+Produktive Backup-Aufbewahrung, Wiederherstellungsfenster und endgültige
+Löschfristen müssen vor Aktivierung dokumentiert und rechtlich freigegeben
+werden. Eine Löschung wirkt sofort im aktiven System. Bis zum Ablauf der
+verbindlich festgelegten Backup-Aufbewahrung können verschlüsselte Sicherungen
+noch Altstände enthalten; sie dürfen nicht als aktive Nutzerdaten
+wiederhergestellt werden, ohne die zwischenzeitlichen Löschungen erneut
+anzuwenden.
+
 ## Aktivierung
 
 1. Freigabecheckliste von Datenschutz, Betrieb und Sicherheit gegenzeichnen
    lassen.
 2. Staging-Datenbankmigrationen, Funktionen und exakte Callback-URLs prüfen.
-3. Hosted Supabase Auth weiterhin geschlossen halten und Pages mit den fünf
+3. Hosted Supabase Auth weiterhin geschlossen halten und Pages mit den sechs
    browser-sicheren Variablen bereitstellen.
 4. Einen vollständigen Smoke-Test mit einem ausschließlich dafür vorgesehenen
    Konto durchführen.
@@ -173,6 +245,18 @@ enthalten.
    bestimmen.
 5. Korrektur erst nach erneuter Cross-User-Prüfung und Review ausrollen.
 
+### Verdacht auf Offenlegung von Community-Rohwerten
+
+1. Aggregat-Lesezugriff und Community-Schreibzugriffe sofort sperren.
+2. Niemals einzelne THC-/CBD-Rohwerte, exakte Beitragendenzahlen oder
+   Konto-Zuordnungen in Logs, Tickets, Screenshots oder Supportnachrichten
+   kopieren.
+3. REST-, RPC-, RLS- und AAL-Grenzen mit ausschließlich synthetischen Daten
+   reproduzieren.
+4. Betroffenen Zeitraum, Exporte und Aggregationsläufe mit Datenschutz und
+   Incident Response bestimmen.
+5. Erst nach erneuter Schwellenwert-, Zwei-Nutzer- und Exportprüfung öffnen.
+
 ### Token- oder Secret-Leak
 
 1. Betroffenen Key oder Token sofort widerrufen beziehungsweise rotieren.
@@ -201,6 +285,22 @@ Rollback bedeutet:
 5. SMTP-Versand bei E-Mail- oder Enumeration-Vorfällen pausieren.
 6. Ursache in Staging beheben und die komplette Pflichtcheckliste erneut
    durchlaufen.
+
+Für einen isolierten Community-Aggregations-Rollback führt der
+Datenbank-Owner zusätzlich aus:
+
+```sql
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'weedypedia-community-flower-averages-six-hourly';
+
+revoke select on api.community_flower_averages from authenticated;
+```
+
+Die privaten Funktionen zum Lesen, Ersetzen, Widerrufen und Exportieren der
+eigenen Beiträge bleiben dabei verfügbar, damit Nutzerkontrolle und Löschung
+erhalten bleiben. Die Rohwerttabelle wird nicht freigegeben und nicht
+verändert.
 
 Ein Rollback darf niemals durch Entfernen vorhandener Konten oder Bestände
 „bereinigen“.

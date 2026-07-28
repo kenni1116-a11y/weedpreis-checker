@@ -19,6 +19,11 @@ const changedEmailA = 'account-a-new@example.invalid'
 const emailB = 'account-b@example.invalid'
 const usernameA = 'Account.A'
 const usernameB = 'Account.B'
+const canonicalCultivarId = '10000000-0000-4000-8000-000000000001'
+const aliasName = 'Test-Hybrid – keine Echtdaten'
+const canonicalCultivarName = 'Test-Cultivar – keine Echtdaten'
+const productName = 'Testprodukt – keine Echtdaten'
+const privateEntryName = 'Freier E2E-Bestand – keine Echtdaten'
 
 type MailSummary = {
   ID?: string
@@ -201,19 +206,42 @@ async function completeMfa(
 async function addInventory(
   page: Page,
   input: {
-    reference: string
+    search: string
+    matchText?: string
+    expectCommunity?: boolean
     quantity: string
     unit?: 'g' | 'ml' | 'piece'
+    originOne?: string
+    originTwo?: string
     batch?: string
     expiresOn?: string
     storageLocation?: string
     note?: string
+    contribution?: {
+      thc: string
+      cbd: string
+      source: 'label' | 'laboratory'
+    }
   },
 ): Promise<void> {
   await page.getByRole('button', { name: 'Eintrag hinzufügen' }).click()
-  await page.getByLabel('Sorte oder Produkt').selectOption({
-    label: input.reference,
-  })
+  const search = page.getByRole('combobox', { name: 'Sorte oder Produkt' })
+  await search.fill(input.search)
+  if (input.matchText) {
+    await page.getByRole('option')
+      .filter({ hasText: input.matchText })
+      .click()
+  } else {
+    await expect(page.getByText(
+      'Kein Katalogtreffer. Der Name kann privat gespeichert werden.',
+    )).toBeVisible()
+  }
+  if (input.originOne !== undefined) {
+    await page.getByLabel('Herkunft 1 (optional)').fill(input.originOne)
+  }
+  if (input.originTwo !== undefined) {
+    await page.getByLabel('Herkunft 2 (optional)').fill(input.originTwo)
+  }
   await page.getByLabel('Menge').fill(input.quantity)
   if (input.unit) await page.getByLabel('Einheit').selectOption(input.unit)
   if (input.batch) await page.getByLabel('Charge (optional)').fill(input.batch)
@@ -224,20 +252,87 @@ async function addInventory(
     await page.getByLabel('Lagerort (optional)').fill(input.storageLocation)
   }
   if (input.note) await page.getByLabel('Notiz (optional)').fill(input.note)
+  if (input.expectCommunity) {
+    await expect(page.getByLabel(
+      'Community-Werte freiwillig beitragen',
+    )).toBeVisible()
+  }
+  if (input.contribution) {
+    await page.getByLabel(
+      'Community-Werte freiwillig beitragen',
+    ).check()
+    await page.getByLabel('THC in Prozent').fill(input.contribution.thc)
+    await page.getByLabel('CBD in Prozent').fill(input.contribution.cbd)
+    await page.getByLabel('Quelle der Werte').selectOption(
+      input.contribution.source,
+    )
+    await page.getByLabel(
+      'Ich bestätige: Die Werte stammen vom Etikett oder aus einem Laborbericht und sind nicht geschätzt.',
+    ).check()
+  }
   await page.getByRole('button', { name: 'Speichern' }).click()
 }
 
+function apiHeaders(token: string): Record<string, string> {
+  return {
+    apikey: anonKey!,
+    Authorization: `Bearer ${token}`,
+    'Accept-Profile': 'api',
+    'Content-Profile': 'api',
+    'Content-Type': 'application/json',
+  }
+}
+
+async function ownCommunityContribution(
+  request: APIRequestContext,
+  token: string,
+): Promise<Array<{
+  cultivar_id: string
+  thc_percent: number
+  cbd_percent: number
+  source_kind: string
+}>> {
+  const response = await request.post(
+    `${apiUrl}/rest/v1/rpc/get_my_community_flower_contribution`,
+    {
+      headers: apiHeaders(token),
+      data: { p_cultivar_id: canonicalCultivarId },
+    },
+  )
+  expect(response.ok()).toBe(true)
+  return response.json()
+}
+
+async function ownInventory(
+  request: APIRequestContext,
+  token: string,
+): Promise<Array<{ id: string; entry_name: string }>> {
+  const response = await request.get(
+    `${apiUrl}/rest/v1/inventory_items?select=id,entry_name&order=created_at.asc`,
+    { headers: apiHeaders(token) },
+  )
+  expect(response.ok()).toBe(true)
+  return response.json()
+}
+
 async function accessToken(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith('sb-') || !key.endsWith('-auth-token')) continue
-      const value = localStorage.getItem(key)
-      if (!value) continue
-      const parsed = JSON.parse(value) as { access_token?: string }
-      if (parsed.access_token) return parsed.access_token
-    }
-    throw new Error('No browser access token found.')
-  })
+  let token = ''
+  await expect.poll(async () => {
+    token = await page.evaluate(() => {
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith('sb-') || !key.endsWith('-auth-token')) continue
+        const value = localStorage.getItem(key)
+        if (!value) continue
+        const parsed = JSON.parse(value) as { access_token?: string }
+        if (parsed.access_token) return parsed.access_token
+      }
+      return ''
+    })
+    return token
+  }, {
+    message: 'persisted browser access token',
+  }).not.toBe('')
+  return token
 }
 
 async function requestRecovery(page: Page, email: string): Promise<string> {
@@ -265,7 +360,7 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   request,
   context,
 }, testInfo) => {
-  test.setTimeout(240_000)
+  test.setTimeout(300_000)
   expect(apiUrl, 'E2E_SUPABASE_API_URL').toBeTruthy()
   expect(anonKey, 'E2E_SUPABASE_ANON_KEY').toBeTruthy()
   await clearMailpit(request)
@@ -331,28 +426,297 @@ test('verified iPhone account keeps inventory private through its full lifecycle
 
   await page.getByRole('button', { name: 'Abmelden' }).click()
   await login(page, emailA, passwordA)
+  await expect(page.getByRole(
+    'heading',
+    { name: 'Zwei-Faktor-Bestätigung' },
+  )).toBeVisible()
+
+  const aal1Token = await accessToken(page)
+  const blockedCommunityRead = await request.post(
+    `${apiUrl}/rest/v1/rpc/get_my_community_flower_contribution`,
+    {
+      headers: apiHeaders(aal1Token),
+      data: { p_cultivar_id: canonicalCultivarId },
+    },
+  )
+  expect(blockedCommunityRead.ok()).toBe(false)
+
   let lastCode = await completeMfa(page, secret!, enrollmentCode)
+  let tokenA = await accessToken(page)
+  expect(await ownCommunityContribution(request, tokenA)).toEqual([])
 
   await page.getByRole('button', { name: 'Bestand' }).click()
-  await addInventory(page, {
-    reference: 'Test-Cultivar – keine Echtdaten · Sorte',
-    quantity: '2',
+  await page.getByRole('button', { name: 'Eintrag hinzufügen' }).click()
+  const aliasSearch = page.getByRole('combobox', {
+    name: 'Sorte oder Produkt',
   })
-  await addInventory(page, {
-    reference: 'Testprodukt – keine Echtdaten · Produkt',
-    quantity: '1',
-    unit: 'piece',
-    batch: 'SYNTHETIC-BATCH',
-    expiresOn: '2027-07-25',
-    storageLocation: 'Testschrank',
-    note: 'Ausschließlich synthetischer E2E-Eintrag.',
-  })
-  await expect(page.getByText('2 g')).toBeVisible()
-  await expect(page.getByText('1 Stück')).toBeVisible()
+  await aliasSearch.fill('Test-Hybrid')
+  const aliasOption = page.getByRole('option').filter({ hasText: aliasName })
+  await expect(aliasOption).toContainText('Alias')
+  await expect(aliasOption).toContainText(canonicalCultivarName)
+  await aliasOption.click()
+  await expect(aliasSearch).toHaveValue(aliasName)
+  await expect(page.getByText(
+    `Kanonischer Vorschlag: ${canonicalCultivarName}`,
+  )).toBeVisible()
+  await expect(page.getByLabel('Herkunft 1 (optional)')).toHaveValue(
+    'Test-Ursprung A – keine Echtdaten',
+  )
+  await expect(page.getByLabel('Herkunft 2 (optional)')).toHaveValue(
+    'Test-Ursprung B – keine Echtdaten',
+  )
+  await page.getByLabel('Herkunft 2 (optional)').fill(
+    'Privat angepasste Herkunft – keine Echtdaten',
+  )
+  await page.getByLabel('Menge').fill('2')
+  await expect(page.getByLabel(
+    'Community-Werte freiwillig beitragen',
+  )).toHaveCount(0)
+  await page.getByRole('button', { name: 'Speichern' }).click()
+  await expect(page.getByRole('status')).toHaveText('Gespeichert.')
+  await expect(page.getByRole(
+    'heading',
+    { name: aliasName },
+  )).toBeVisible()
+
   await page.reload()
   await page.getByRole('button', { name: 'Bestand' }).click()
+  await expect(page.getByText(
+    'Privat angepasste Herkunft – keine Echtdaten',
+  )).toBeVisible()
+  await page.getByRole('button', { name: `${aliasName} bearbeiten` }).click()
+  await expect(page.getByLabel('Herkunft 1 (optional)')).toHaveValue(
+    'Test-Ursprung A – keine Echtdaten',
+  )
+  await expect(page.getByLabel('Herkunft 2 (optional)')).toHaveValue(
+    'Privat angepasste Herkunft – keine Echtdaten',
+  )
+  await page.getByRole('button', { name: 'Abbrechen' }).click()
+
+  await addInventory(page, {
+    search: privateEntryName,
+    quantity: '0.5',
+    note: 'Nur privater Freitext.',
+  })
+  await expect(page.getByRole(
+    'heading',
+    { name: privateEntryName },
+  )).toBeVisible()
+  await expect(page.getByLabel(
+    'Community-Werte freiwillig beitragen',
+  )).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Eintrag hinzufügen' }).click()
+  const productSearch = page.getByRole('combobox', {
+    name: 'Sorte oder Produkt',
+  })
+  await productSearch.fill('Testprodukt')
+  const productOption = page.getByRole('option').filter({
+    hasText: productName,
+  })
+  await expect(productOption).toContainText('Produkt')
+  await productOption.click()
+  await expect(page.getByLabel(
+    'Community-Werte freiwillig beitragen',
+  )).toBeVisible()
+  await page.getByLabel('Menge').fill('1')
+  await page.getByLabel('Einheit').selectOption('piece')
+  await page.getByLabel('Charge (optional)').fill('SYNTHETIC-BATCH')
+  await page.getByLabel('Ablaufdatum (optional)').fill('2027-07-25')
+  await page.getByLabel('Lagerort (optional)').fill('Testschrank')
+  await page.getByLabel('Notiz (optional)').fill(
+    'Ausschließlich synthetischer E2E-Eintrag.',
+  )
+  await page.getByLabel('Community-Werte freiwillig beitragen').check()
+  await page.getByLabel('THC in Prozent').fill('70,01')
+  await page.getByLabel('CBD in Prozent').fill('0')
+  await page.getByLabel('Quelle der Werte').selectOption('label')
+  await page.getByLabel(
+    'Ich bestätige: Die Werte stammen vom Etikett oder aus einem Laborbericht und sind nicht geschätzt.',
+  ).check()
+  await page.getByRole('button', { name: 'Speichern' }).click()
+  await expect(page.getByText(
+    'Keine Fantasiewerte. Bitte AUSSCHLIESSLICH die Werte des Labels oder eines Laborberichts angeben.',
+  ).first()).toBeVisible()
+  await page.getByLabel('THC in Prozent').fill('70,00')
+  await page.getByRole('button', { name: 'Speichern' }).click()
+  await expect(page.getByRole('status')).toHaveText(
+    'Gespeichert. Der Community-Mittelwert wird später aktualisiert.',
+  )
   await expect(page.getByText('2 g')).toBeVisible()
-  await expect(page.getByText('SYNTHETIC-BATCH')).toBeVisible()
+  await expect(page.getByText('1 Stück')).toBeVisible()
+
+  tokenA = await accessToken(page)
+  expect((await ownCommunityContribution(request, tokenA))[0]).toMatchObject({
+    cultivar_id: canonicalCultivarId,
+    thc_percent: 70,
+    cbd_percent: 0,
+    source_kind: 'label',
+  })
+  await page.getByRole(
+    'button',
+    { name: `${productName} bearbeiten` },
+  ).click()
+  await expect(page.getByLabel('THC in Prozent')).toHaveValue('70')
+  await page.getByLabel('THC in Prozent').fill('22,5')
+  await page.getByLabel('CBD in Prozent').fill('0,8')
+  await page.getByLabel('Quelle der Werte').selectOption('laboratory')
+  await page.getByRole('button', { name: 'Änderungen speichern' }).click()
+  await expect(page.getByRole('status')).toHaveText(
+    'Gespeichert. Der Community-Mittelwert wird später aktualisiert.',
+  )
+  await expect.poll(async () => ownCommunityContribution(
+    request,
+    tokenA,
+  )).toEqual([
+    expect.objectContaining({
+      cultivar_id: canonicalCultivarId,
+      thc_percent: 22.5,
+      cbd_percent: 0.8,
+      source_kind: 'laboratory',
+    }),
+  ])
+
+  const invalidContributionBase = {
+    p_cultivar_id: canonicalCultivarId,
+    p_thc_percent: 23,
+    p_cbd_percent: 1,
+    p_consent_version: 'weedypedia-community-values-2026-07-28',
+  }
+  for (const invalidInput of [
+    {
+      ...invalidContributionBase,
+      p_source_kind: null,
+      p_declaration_confirmed: true,
+      p_opt_in: true,
+    },
+    {
+      ...invalidContributionBase,
+      p_source_kind: 'label',
+      p_declaration_confirmed: false,
+      p_opt_in: true,
+    },
+    {
+      ...invalidContributionBase,
+      p_source_kind: 'label',
+      p_declaration_confirmed: true,
+      p_opt_in: false,
+    },
+  ]) {
+    const rejected = await request.post(
+      `${apiUrl}/rest/v1/rpc/upsert_my_community_flower_contribution`,
+      { headers: apiHeaders(tokenA), data: invalidInput },
+    )
+    expect(rejected.ok()).toBe(false)
+  }
+  expect((await ownCommunityContribution(request, tokenA))[0]).toMatchObject({
+    thc_percent: 22.5,
+    cbd_percent: 0.8,
+  })
+
+  let failCommunityOnce = true
+  await page.route(
+    '**/rest/v1/rpc/upsert_my_community_flower_contribution',
+    async (route) => {
+      if (failCommunityOnce) {
+        failCommunityOnce = false
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'synthetic retry boundary' }),
+        })
+        return
+      }
+      await route.continue()
+    },
+  )
+  await addInventory(page, {
+    search: 'Testprodukt',
+    matchText: productName,
+    expectCommunity: true,
+    quantity: '3',
+    contribution: {
+      thc: '24',
+      cbd: '1',
+      source: 'label',
+    },
+  })
+  await expect(page.getByRole('alert')).toHaveText(
+    'Der Bestand wurde gespeichert. Der Community-Beitrag konnte nicht übernommen werden.',
+  )
+  const inventoryBeforeRetry = await ownInventory(request, tokenA)
+  expect(inventoryBeforeRetry).toHaveLength(4)
+  await page.getByRole(
+    'button',
+    { name: 'Community-Beitrag erneut versuchen' },
+  ).click()
+  await expect(page.getByRole('status')).toHaveText(
+    'Gespeichert. Der Community-Mittelwert wird später aktualisiert.',
+  )
+  expect(await ownInventory(request, tokenA)).toHaveLength(4)
+  await page.unroute(
+    '**/rest/v1/rpc/upsert_my_community_flower_contribution',
+  )
+  expect((await ownCommunityContribution(request, tokenA))[0]).toMatchObject({
+    thc_percent: 24,
+    cbd_percent: 1,
+  })
+
+  await page.getByRole('button', { name: `${aliasName} löschen` }).click()
+  await page.getByRole('button', { name: 'Löschen bestätigen' }).click()
+  await expect(page.getByRole(
+    'heading',
+    { name: aliasName },
+  )).toHaveCount(0)
+  expect(await ownCommunityContribution(request, tokenA)).toHaveLength(1)
+
+  const productDeleteButtons = page.getByRole(
+    'button',
+    { name: `${productName} löschen` },
+  )
+  await productDeleteButtons
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'Löschen bestätigen' }).click()
+  await expect(productDeleteButtons).toHaveCount(1)
+  expect(await ownCommunityContribution(request, tokenA)).toHaveLength(1)
+  await productDeleteButtons.click()
+  await page.getByRole('button', { name: 'Löschen bestätigen' }).click()
+  await expect(productDeleteButtons).toHaveCount(0)
+  await expect.poll(async () => ownCommunityContribution(
+    request,
+    tokenA,
+  )).toEqual([])
+
+  await addInventory(page, {
+    search: 'Testprodukt',
+    matchText: productName,
+    expectCommunity: true,
+    quantity: '1',
+    unit: 'piece',
+    contribution: {
+      thc: '25',
+      cbd: '1,2',
+      source: 'laboratory',
+    },
+  })
+  await expect(page.getByRole('status')).toHaveText(
+    'Gespeichert. Der Community-Mittelwert wird später aktualisiert.',
+  )
+  expect(await ownInventory(request, tokenA)).toHaveLength(2)
+  expect((await ownCommunityContribution(request, tokenA))[0]).toMatchObject({
+    thc_percent: 25,
+    cbd_percent: 1.2,
+    source_kind: 'laboratory',
+  })
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Bestand' }).click()
+  await expect(page.getByText('Nur privater Freitext.')).toBeVisible()
+  await expect(page.getByRole(
+    'heading',
+    { name: productName },
+  )).toBeVisible()
   await capture(page, testInfo, 'private-inventory-a')
 
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
@@ -415,6 +779,14 @@ test('verified iPhone account keeps inventory private through its full lifecycle
     account: { username: string; email: string }
     consents: Array<{ kind: string }>
     inventory: Array<{ id: string; quantity: number }>
+    communityFlowerContributions: Array<{
+      cultivarId: string
+      cultivarName: string
+      thcPercent: number
+      cbdPercent: number
+      sourceKind: string
+      consentVersion: string
+    }>
   }
   expect(accountExport.account).toMatchObject({
     username: usernameA,
@@ -426,9 +798,19 @@ test('verified iPhone account keeps inventory private through its full lifecycle
     'terms',
   ])
   expect(accountExport.inventory).toHaveLength(2)
+  expect(accountExport.communityFlowerContributions).toEqual([
+    expect.objectContaining({
+      cultivarId: canonicalCultivarId,
+      cultivarName: canonicalCultivarName,
+      thcPercent: 25,
+      cbdPercent: 1.2,
+      sourceKind: 'laboratory',
+      consentVersion: 'weedypedia-community-values-2026-07-28',
+    }),
+  ])
   expect(exportText).not.toContain(passwordA)
   expect(exportText).not.toMatch(
-    /access_token|refresh_token|app_metadata|user_metadata|service_role/i,
+    /access_token|refresh_token|app_metadata|user_metadata|service_role|contributor_count|review_status/i,
   )
   const accountAItemIds = accountExport.inventory.map((item) => item.id)
 
@@ -453,18 +835,24 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   await expect(page.getByText('Noch kein Bestand gespeichert.')).toBeVisible()
 
   const tokenB = await accessToken(page)
-  const headersB = {
-    apikey: anonKey!,
-    Authorization: `Bearer ${tokenB}`,
-    'Accept-Profile': 'api',
-    'Content-Profile': 'api',
-  }
+  const headersB = apiHeaders(tokenB)
   const listAsB = await request.get(
     `${apiUrl}/rest/v1/inventory_items?select=id`,
     { headers: headersB },
   )
   expect(listAsB.ok()).toBe(true)
   expect(await listAsB.json()).toEqual([])
+  expect(await ownCommunityContribution(request, tokenB)).toEqual([])
+  const rawContributionRead = await request.get(
+    `${apiUrl}/rest/v1/community_flower_contributions?select=*`,
+    {
+      headers: {
+        ...headersB,
+        'Accept-Profile': 'private',
+      },
+    },
+  )
+  expect(rawContributionRead.ok()).toBe(false)
   for (const itemId of accountAItemIds) {
     const readAAsB = await request.get(
       `${apiUrl}/rest/v1/inventory_items?id=eq.${itemId}&select=id,quantity`,
@@ -530,7 +918,14 @@ test('verified iPhone account keeps inventory private through its full lifecycle
     { name: 'Weedypedia' },
   )).toBeVisible()
   await page.getByRole('button', { name: 'Bestand' }).click()
-  await expect(page.getByText('2 g')).toBeVisible()
+  await expect(page.getByRole(
+    'heading',
+    { name: privateEntryName },
+  )).toBeVisible()
+  await expect(page.getByRole(
+    'heading',
+    { name: productName },
+  )).toBeVisible()
   await expect(page.getByText('999 g')).toHaveCount(0)
 
   await clearMailpit(request)
@@ -559,6 +954,7 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   await page.goto('/')
   await login(page, changedEmailA, recoveredPasswordA)
   lastCode = await completeMfa(page, secret!, lastCode)
+  tokenA = await accessToken(page)
 
   await page.getByRole('button', { name: 'Profil' }).click()
   await page.getByLabel(
@@ -574,6 +970,7 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   await page.getByLabel(
     'Ich bestätige die unwiderrufliche Kontolöschung',
   ).check()
+  const tokenBeforeDeletion = tokenA
   await page.getByRole('button', { name: 'Konto endgültig löschen' }).click()
   await expect(page.getByRole(
     'heading',
@@ -584,4 +981,9 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   await expect(page.getByRole('alert')).toHaveText(
     'Anmeldung nicht möglich. Prüfe E-Mail-Adresse und Passwort.',
   )
+
+  expect(await ownInventory(request, tokenBeforeDeletion)).toEqual([])
+  expect(
+    await ownCommunityContribution(request, tokenBeforeDeletion),
+  ).toEqual([])
 })
