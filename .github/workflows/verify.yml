@@ -12,5 +12,29 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec supabase start
+      - name: Write browser-safe local status
+        shell: bash
+        run: |
+          umask 077
+          pnpm exec supabase status -o env \
+            | grep -E '^(API_URL|ANON_KEY)=' \
+            > supabase/.temp/status.env
+          chmod 600 supabase/.temp/status.env
+          test "$(wc -l < supabase/.temp/status.env)" -eq 2
+      - run: pnpm test:db
+      - run: pnpm test:functions
+      - run: pnpm exec supabase db lint --schema api,catalog,private,public --level error --fail-on error
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm exec playwright install --with-deps webkit
+      - run: pnpm test:e2e
+      - name: Upload failed iPhone evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weedypedia-playwright-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

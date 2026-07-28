@@ -30,6 +30,7 @@ export function AuthGate({
   const { state } = useAuth()
   const [view, setView] = useState<SignedOutView>('login')
   const [verificationEmail, setVerificationEmail] = useState('')
+  const [passwordRecoveryCallback] = useState(isPasswordRecoveryCallback)
 
   if (state.status === 'loading') {
     return (
@@ -52,7 +53,7 @@ export function AuthGate({
   }
 
   if (state.status === 'signed-in') {
-    if (isPasswordRecoveryCallback()) return <UpdatePasswordForm />
+    if (passwordRecoveryCallback) return <UpdatePasswordForm />
     return <>{children}</>
   }
 

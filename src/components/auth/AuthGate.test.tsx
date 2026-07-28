@@ -162,6 +162,43 @@ describe('AuthGate', () => {
     expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
   })
 
+  it('keeps a consumed recovery callback through a required MFA step', async () => {
+    window.history.replaceState({}, '', '/auth/callback#type=recovery')
+    const service = createInMemoryAuthService({
+      initialState: {
+        status: 'mfa-required',
+        email: 'user@example.invalid',
+        factors: [{
+          id: 'factor-1',
+          friendlyName: 'Weedypedia',
+          status: 'verified',
+        }],
+      },
+    })
+    renderGate(service)
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Zwei-Faktor-Bestätigung' },
+    )).toBeInTheDocument()
+    window.history.replaceState({}, '', '/auth/callback')
+    service.setState({
+      status: 'signed-in',
+      user: {
+        id: 'synthetic-user',
+        username: 'Test.User',
+        email: 'user@example.invalid',
+        emailVerified: true,
+        aal: 'aal2',
+      },
+    })
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Neues Passwort festlegen' },
+    )).toBeInTheDocument()
+  })
+
   it('blocks protected content at AAL1 and submits one six-digit TOTP challenge', async () => {
     const user = userEvent.setup()
     const service = createInMemoryAuthService({

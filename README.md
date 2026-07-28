@@ -19,6 +19,11 @@ Voraussetzungen: Node.js 24, pnpm 11.9.0 und Docker Desktop.
 pnpm install --frozen-lockfile
 cp .env.example .env.local
 pnpm supabase:start
+umask 077
+pnpm exec supabase status -o env \
+  | grep -E '^(API_URL|ANON_KEY)=' \
+  > supabase/.temp/status.env
+chmod 600 supabase/.temp/status.env
 pnpm dev
 ```
 
@@ -33,6 +38,10 @@ pnpm test:e2e
 pnpm check
 ```
 
+Die iPhone-E2E-Prüfung startet fail-closed: Ohne laufendes lokales Supabase und
+eine frisch erzeugte `supabase/.temp/status.env` wird kein Browser geöffnet.
+Playwright übernimmt daraus ausschließlich `API_URL` und `ANON_KEY`.
+
 ## Konto- und Datenschutzgrenze
 
 Die erste Umsetzungsstufe verwendet eine verifizierte, nicht öffentliche
@@ -46,6 +55,11 @@ Auftragsverarbeitung, SMTP, RLS sowie Export und Löschung freigegeben sind. Ein
 Browser-Build allein aktiviert keine Registrierung; die Freigabe erfolgt erst
 nach dem dokumentierten Betriebs- und Sicherheitstest über die serverseitige
 Supabase-Konfiguration.
+
+Die verbindliche Freigabe-, Rollback- und Vorfallcheckliste steht in
+[docs/operations/weedypedia-account-activation.md](docs/operations/weedypedia-account-activation.md).
+Bis sie vollständig gegengezeichnet ist, bleiben Hosted-Supabase-Signups und
+persönliche Schreibzugriffe serverseitig deaktiviert.
 
 ## Überprüfen
 
