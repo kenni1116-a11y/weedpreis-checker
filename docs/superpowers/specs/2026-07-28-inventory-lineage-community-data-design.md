@@ -95,12 +95,18 @@ Ein Beitrag enthält:
 - aktuelle Einwilligungsfassung,
 - Erstellungs- und Änderungszeitpunkt.
 
-THC und CBD werden als exakte Dezimalwerte zwischen 0 und 100 Prozent
-gespeichert. Punkt und Komma sind bei der Eingabe zulässig; gespeichert wird
-normalisiert mit höchstens zwei Nachkommastellen. Angaben wie „unter 1 %“
-werden in Version 1 nicht in einen Mittelwert umgewandelt. Ist kein exakter
-THC- oder CBD-Wert vorhanden, kann der private Bestand trotzdem ohne
-Community-Beitrag gespeichert werden.
+THC und CBD werden als exakte Dezimalwerte zwischen 0 und einschließlich
+70 Prozent gespeichert. Punkt und Komma sind bei der Eingabe zulässig;
+gespeichert wird normalisiert mit höchstens zwei Nachkommastellen. Ein Wert
+über 70 Prozent wird weder als Community-Beitrag gespeichert noch in einen
+Mittelwert einbezogen. Die Oberfläche zeigt:
+
+> Keine Fantasiewerte. Bitte AUSSCHLIESSLICH die Werte des Labels oder eines
+> Laborberichts angeben.
+
+Angaben wie „unter 1 %“ werden in Version 1 nicht in einen Mittelwert
+umgewandelt. Ist kein exakter gültiger THC- oder CBD-Wert vorhanden, kann der
+private Bestand trotzdem ohne Community-Beitrag gespeichert werden.
 
 Vor dem Speichern bestätigt der Nutzer verpflichtend:
 
@@ -287,7 +293,8 @@ Vor Aktivierung besitzt jede Quelle:
 - Aktivierungs- und Sperrstatus.
 
 Importe sind idempotent. Unbekannte Aliase, widersprüchliche Abstammungen,
-auffällige Messwerte und gelöschte Quelldaten erzeugen Prüffälle. Ein
+auffällige Messwerte und gelöschte Quelldaten erzeugen Prüffälle. Ein THC- oder
+CBD-Wert über 70 Prozent für eine Blüte wird nicht veröffentlicht. Ein
 fehlgeschlagener Adapter verändert den letzten veröffentlichten Stand nicht.
 
 ### 6.3 Erste Pilotquellen
@@ -320,6 +327,8 @@ ausgeschlossen.
 ### 7.2 Community-Beiträge
 
 - Ohne Opt-in oder Quellenbestätigung wird kein Beitrag gespeichert.
+- `70,00 %` wird akzeptiert; jeder Wert darüber wird serverseitig abgelehnt und
+  zeigt den Hinweis gegen Fantasiewerte.
 - Ein zweiter Beitrag desselben Kontos und derselben Sorte ersetzt den ersten.
 - Mehrere Bestandszeilen erzeugen kein mehrfaches Gewicht.
 - Fremde Rohbeiträge sind über REST, RPC und RLS nicht les- oder veränderbar.
@@ -346,6 +355,8 @@ ausgeschlossen.
 - Schemaänderungen und Zeitüberschreitungen isolieren nur den betroffenen
   Adapter.
 - Unbekannte Zuordnungen werden nicht automatisch veröffentlicht.
+- Blütenwerte über 70 Prozent erzeugen einen Prüffall und gelangen nicht in
+  Aussagen oder Aggregate.
 - Jede veröffentlichte Aussage bleibt auf Quelle und Quellversion
   zurückführbar.
 
