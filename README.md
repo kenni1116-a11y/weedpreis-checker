@@ -5,6 +5,12 @@ zu Cannabis-Sorten, Herkunft, Verwandtschaft und medizinischen Produkten. Die
 Anwendung dient ausschließlich der Produktentwicklung und stellt keine
 medizinische Beratung dar.
 
+Der aktuelle Zwischenstand enthält das verifizierte pseudonyme Konto, optionale
+TOTP-Absicherung und den privaten persönlichen Bestand. Die Bereiche Entdecken
+und Suche bleiben bis zur nächsten freigegebenen, quellenbasierten Datenetappe
+als klar gekennzeichnete Vorschau sichtbar. Die frühere Preisvergleichsrichtung
+ist in der Anwendung nicht mehr erreichbar.
+
 ## Lokal starten
 
 Voraussetzungen: Node.js 24, pnpm 11.9.0 und Docker Desktop.
@@ -36,7 +42,10 @@ Bestands-, Wissens- oder Analysedaten kopiert.
 
 Lokale Auth-Nachrichten werden von Mailpit aufgefangen. Produktive
 Registrierung bleibt deaktiviert, bis Datenschutzprüfung, EU-Datenregion,
-Auftragsverarbeitung, SMTP, RLS sowie Export und Löschung freigegeben sind.
+Auftragsverarbeitung, SMTP, RLS sowie Export und Löschung freigegeben sind. Ein
+Browser-Build allein aktiviert keine Registrierung; die Freigabe erfolgt erst
+nach dem dokumentierten Betriebs- und Sicherheitstest über die serverseitige
+Supabase-Konfiguration.
 
 ## Überprüfen
 

@@ -42,7 +42,7 @@ export function LoginForm({
 
   return (
     <section className="auth-panel" aria-labelledby="login-title">
-      <h2 id="login-title">Anmelden</h2>
+      <h2 id="login-title">Bei Weedypedia anmelden</h2>
       {error && (
         <div ref={errorRef} role="alert" tabIndex={-1} className="error-summary">
           {error}

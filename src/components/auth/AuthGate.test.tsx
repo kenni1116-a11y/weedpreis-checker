@@ -50,7 +50,10 @@ describe('AuthGate', () => {
     renderGate()
 
     expect(
-      await screen.findByRole('heading', { name: 'Anmelden' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Bei Weedypedia anmelden' },
+      ),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('E-Mail-Adresse')).toHaveAttribute(
       'autocomplete',

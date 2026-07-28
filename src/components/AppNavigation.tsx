@@ -1,4 +1,4 @@
-export type AppTab = 'search' | 'favorites' | 'info'
+export type AppTab = 'discover' | 'search' | 'inventory' | 'profile'
 
 type AppNavigationProps = {
   active: AppTab
@@ -6,9 +6,10 @@ type AppNavigationProps = {
 }
 
 const tabs: ReadonlyArray<readonly [AppTab, string]> = [
+  ['discover', 'Entdecken'],
   ['search', 'Suche'],
-  ['favorites', 'Favoriten'],
-  ['info', 'Info'],
+  ['inventory', 'Bestand'],
+  ['profile', 'Profil'],
 ]
 
 export function AppNavigation({ active, onSelect }: AppNavigationProps) {

@@ -1,4 +1,3 @@
-const ADULT_KEY = 'weedpreis.adult'
 const FAVORITES_KEY = 'weedpreis.favorites'
 
 function getStorage(): Storage | undefined {
@@ -10,20 +9,6 @@ function getStorage(): Storage | undefined {
 }
 
 export const devicePreferences = {
-  isAdultConfirmed: () => {
-    try {
-      return getStorage()?.getItem(ADULT_KEY) === 'true'
-    } catch {
-      return false
-    }
-  },
-  confirmAdult: () => {
-    try {
-      getStorage()?.setItem(ADULT_KEY, 'true')
-    } catch {
-      // Device storage is optional; the current session can still continue.
-    }
-  },
   getFavoriteIds(): string[] {
     try {
       const value: unknown = JSON.parse(getStorage()?.getItem(FAVORITES_KEY) ?? '[]')
