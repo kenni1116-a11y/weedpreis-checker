@@ -24,9 +24,13 @@ export function InventoryCard({
       <header>
         <div>
           <p className="eyebrow">
-            {item.reference.kind === 'cultivar' ? 'Sorte' : 'Produkt'}
+            {item.reference?.kind === 'product'
+              ? 'Produkt'
+              : item.reference
+                ? 'Sorte'
+                : 'Privater Eintrag'}
           </p>
-          <h3>{item.reference.canonicalName}</h3>
+          <h3>{item.entryName}</h3>
         </div>
         <strong>
           {quantityFormatter.format(item.quantity)} {unitLabel(item)}
@@ -65,14 +69,14 @@ export function InventoryCard({
       <div className="card-actions">
         <button
           type="button"
-          aria-label={`${item.reference.canonicalName} bearbeiten`}
+          aria-label={`${item.entryName} bearbeiten`}
           onClick={onEdit}
         >
           Bearbeiten
         </button>
         <button
           type="button"
-          aria-label={`${item.reference.canonicalName} löschen`}
+          aria-label={`${item.entryName} löschen`}
           onClick={onDelete}
         >
           Löschen

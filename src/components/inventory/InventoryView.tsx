@@ -172,7 +172,7 @@ export function InventoryView({ repository }: InventoryViewProps) {
         >
           <h3 id="delete-inventory-heading">Eintrag wirklich löschen?</h3>
           <p>
-            {deletingItem.reference.canonicalName} wird dauerhaft aus deinem
+            {deletingItem.entryName} wird dauerhaft aus deinem
             privaten Bestand entfernt.
           </p>
           <div className="form-actions">

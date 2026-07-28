@@ -29,7 +29,12 @@ const product: CatalogReference = {
 function item(overrides: Partial<InventoryItem> = {}): InventoryItem {
   return {
     id: '30000000-0000-4000-8000-000000000001',
+    entryName: 'Test-Cultivar',
     reference: cultivar,
+    canonicalCultivarId: cultivar.id,
+    isFlower: true,
+    originOneName: null,
+    originTwoName: null,
     quantity: 2,
     unit: 'g',
     batch: null,

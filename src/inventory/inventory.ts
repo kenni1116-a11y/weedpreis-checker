@@ -2,15 +2,23 @@ export const inventoryUnits = ['g', 'ml', 'piece'] as const
 
 export type InventoryUnit = (typeof inventoryUnits)[number]
 
-export type CatalogReference = {
+export type InventoryReference = {
   id: string
   kind: 'cultivar' | 'product'
   canonicalName: string
 }
 
+/** @deprecated Inventory search now owns catalog discovery. */
+export type CatalogReference = InventoryReference
+
 export type InventoryItem = {
   id: string
-  reference: CatalogReference
+  entryName: string
+  reference: InventoryReference | null
+  canonicalCultivarId: string | null
+  isFlower: boolean
+  originOneName: string | null
+  originTwoName: string | null
   quantity: number
   unit: InventoryUnit
   batch: string | null
@@ -22,7 +30,10 @@ export type InventoryItem = {
 }
 
 export type InventoryDraft = {
-  entityId: string
+  entryName: string
+  entityId: string | null
+  originOneName: string
+  originTwoName: string
   quantity: string
   unit: InventoryUnit
   batch: string
@@ -32,7 +43,10 @@ export type InventoryDraft = {
 }
 
 export type ValidInventoryDraft = {
-  entityId: string
+  entryName: string
+  entityId: string | null
+  originOneName: string | null
+  originTwoName: string | null
   quantity: number
   unit: InventoryUnit
   batch: string | null
@@ -79,12 +93,28 @@ export function inventoryDraftErrors(
   draft: InventoryDraft,
 ): InventoryDraftErrors {
   const errors: InventoryDraftErrors = {}
-  const entityId = draft.entityId.trim()
+  const entryName = draft.entryName.trim()
+  const entityId = draft.entityId?.trim() ?? null
   const quantityText = draft.quantity.trim()
   const quantity = Number(quantityText)
 
-  if (!uuidPattern.test(entityId)) {
-    errors.entityId = 'Wähle eine gültige Referenz aus.'
+  if (entryName.length < 1 || entryName.length > 160) {
+    errors.entryName = 'Der Name muss zwischen 1 und 160 Zeichen lang sein.'
+  }
+
+  if (entityId !== null && !uuidPattern.test(entityId)) {
+    errors.entityId =
+      'Wähle eine gültige Referenz aus oder nutze Freitext.'
+  }
+
+  if (draft.originOneName.trim().length > 160) {
+    errors.originOneName =
+      'Die Herkunft darf höchstens 160 Zeichen enthalten.'
+  }
+
+  if (draft.originTwoName.trim().length > 160) {
+    errors.originTwoName =
+      'Die Herkunft darf höchstens 160 Zeichen enthalten.'
   }
 
   if (
@@ -131,7 +161,10 @@ export function validateInventoryDraft(
   if (firstError) throw new Error(firstError)
 
   return {
-    entityId: draft.entityId.trim(),
+    entryName: draft.entryName.trim(),
+    entityId: draft.entityId?.trim() || null,
+    originOneName: optionalText(draft.originOneName, 160),
+    originTwoName: optionalText(draft.originTwoName, 160),
     quantity: Number(draft.quantity.trim()),
     unit: draft.unit,
     batch: optionalText(draft.batch, 120),

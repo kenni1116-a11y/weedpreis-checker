@@ -40,6 +40,11 @@ const reference = {
 const itemRow = {
   id: '20000000-0000-4000-8000-000000000001',
   entity_id: reference.id,
+  entry_name: 'Synthetic Alias',
+  canonical_cultivar_id: reference.id,
+  is_flower: true,
+  origin_one_name: 'Parent One',
+  origin_two_name: 'Parent Two',
   quantity: '3.500',
   unit: 'g',
   batch: null,
@@ -52,7 +57,10 @@ const itemRow = {
 }
 
 const draft: ValidInventoryDraft = {
+  entryName: 'Synthetic Alias',
   entityId: reference.id,
+  originOneName: 'Parent One',
+  originTwoName: 'Parent Two',
   quantity: 3.5,
   unit: 'g',
   batch: null,
@@ -62,37 +70,15 @@ const draft: ValidInventoryDraft = {
 }
 
 function client(
-  referenceResult: QueryResult = { data: [reference], error: null },
   inventoryResult: QueryResult = { data: [itemRow], error: null },
 ) {
-  const references = query(referenceResult)
   const inventory = query(inventoryResult)
-  const from = vi.fn((table: string) => (
-    table === 'catalog_references' ? references : inventory
-  ))
-  return { from, references, inventory }
+  const from = vi.fn(() => inventory)
+  return { from, inventory }
 }
 
 describe('createSupabaseInventoryRepository', () => {
-  it('reads references only from the API catalog projection', async () => {
-    const active = client()
-    const repository = createSupabaseInventoryRepository({
-      client: active,
-    })
-
-    await expect(repository.references()).resolves.toEqual([{
-      id: reference.id,
-      kind: 'cultivar',
-      canonicalName: 'Test-Cultivar',
-    }])
-
-    expect(active.from).toHaveBeenCalledWith('catalog_references')
-    expect(active.references.select).toHaveBeenCalledWith(
-      'id,kind,canonical_name',
-    )
-  })
-
-  it('lists inventory joined only with its canonical reference', async () => {
+  it('lists matched inventory with an optional catalog reference', async () => {
     const active = client()
     const repository = createSupabaseInventoryRepository({
       client: active,
@@ -100,11 +86,16 @@ describe('createSupabaseInventoryRepository', () => {
 
     await expect(repository.list()).resolves.toEqual([{
       id: itemRow.id,
+      entryName: 'Synthetic Alias',
       reference: {
         id: reference.id,
         kind: 'cultivar',
         canonicalName: 'Test-Cultivar',
       },
+      canonicalCultivarId: reference.id,
+      isFlower: true,
+      originOneName: 'Parent One',
+      originTwoName: 'Parent Two',
       quantity: 3.5,
       unit: 'g',
       batch: null,
@@ -117,16 +108,36 @@ describe('createSupabaseInventoryRepository', () => {
 
     expect(active.inventory.select).toHaveBeenCalledWith(
       expect.stringContaining(
-        'catalog_references!inner(id,kind,canonical_name)',
+        'catalog_references(id,kind,canonical_name)',
       ),
     )
   })
 
-  it('creates without accepting or sending a user ID', async () => {
-    const active = client(
-      { data: [reference], error: null },
-      { data: itemRow, error: null },
-    )
+  it('maps a free entry without inventing canonical or flower data', async () => {
+    const active = client({
+      data: [{
+        ...itemRow,
+        entity_id: null,
+        canonical_cultivar_id: null,
+        is_flower: false,
+        catalog_references: null,
+      }],
+      error: null,
+    })
+    const repository = createSupabaseInventoryRepository({ client: active })
+
+    await expect(repository.list()).resolves.toEqual([
+      expect.objectContaining({
+        entryName: 'Synthetic Alias',
+        reference: null,
+        canonicalCultivarId: null,
+        isFlower: false,
+      }),
+    ])
+  })
+
+  it('creates without sending user or server-derived fields', async () => {
+    const active = client({ data: itemRow, error: null })
     const repository = createSupabaseInventoryRepository({
       client: active,
     })
@@ -135,6 +146,9 @@ describe('createSupabaseInventoryRepository', () => {
 
     expect(active.inventory.insert).toHaveBeenCalledWith({
       entity_id: reference.id,
+      entry_name: 'Synthetic Alias',
+      origin_one_name: 'Parent One',
+      origin_two_name: 'Parent Two',
       quantity: 3.5,
       unit: 'g',
       batch: null,
@@ -145,13 +159,16 @@ describe('createSupabaseInventoryRepository', () => {
     expect(active.inventory.insert.mock.calls[0]?.[0]).not.toHaveProperty(
       'user_id',
     )
+    expect(active.inventory.insert.mock.calls[0]?.[0]).not.toHaveProperty(
+      'canonical_cultivar_id',
+    )
+    expect(active.inventory.insert.mock.calls[0]?.[0]).not.toHaveProperty(
+      'is_flower',
+    )
   })
 
   it('updates and deletes only by item ID so RLS owns authorization', async () => {
-    const active = client(
-      { data: [reference], error: null },
-      { data: itemRow, error: null },
-    )
+    const active = client({ data: itemRow, error: null })
     const repository = createSupabaseInventoryRepository({
       client: active,
     })
@@ -169,16 +186,13 @@ describe('createSupabaseInventoryRepository', () => {
   })
 
   it('maps permission errors to INVENTORY_FORBIDDEN', async () => {
-    const active = client(
-      { data: [], error: null },
-      {
+    const active = client({
         data: null,
         error: {
           code: '42501',
           message: 'new row violates row-level security policy',
         },
-      },
-    )
+      })
     const repository = createSupabaseInventoryRepository({
       client: active,
     })
@@ -202,19 +216,15 @@ describe('createSupabaseInventoryRepository', () => {
     expect(active.from).not.toHaveBeenCalled()
   })
 
-  it('forwards live abort signals to both read queries', async () => {
+  it('forwards live abort signals to list reads', async () => {
     const active = client()
     const repository = createSupabaseInventoryRepository({
       client: active,
     })
     const controller = new AbortController()
 
-    await repository.references(controller.signal)
     await repository.list(controller.signal)
 
-    expect(active.references.abortSignal).toHaveBeenCalledWith(
-      controller.signal,
-    )
     expect(active.inventory.abortSignal).toHaveBeenCalledWith(
       controller.signal,
     )
@@ -226,13 +236,9 @@ describe('createSupabaseInventoryRepository', () => {
       client: active,
     })
 
-    await repository.references()
     await repository.list()
 
-    const selectedColumns = [
-      ...active.references.select.mock.calls,
-      ...active.inventory.select.mock.calls,
-    ].flat().join(',')
+    const selectedColumns = active.inventory.select.mock.calls.flat().join(',')
 
     expect(selectedColumns).not.toMatch(
       /email|consent|privacy|terms|adult|user_id/i,

@@ -41,7 +41,12 @@ type CatalogReferenceRow = {
 
 type InventoryRow = {
   id: string
-  entity_id: string
+  entity_id: string | null
+  entry_name: string
+  canonical_cultivar_id: string | null
+  is_flower: boolean
+  origin_one_name: string | null
+  origin_two_name: string | null
   quantity: number | string
   unit: 'g' | 'ml' | 'piece'
   batch: string | null
@@ -77,6 +82,11 @@ export class InventoryRepositoryError extends Error {
 const itemColumns = [
   'id',
   'entity_id',
+  'entry_name',
+  'canonical_cultivar_id',
+  'is_flower',
+  'origin_one_name',
+  'origin_two_name',
   'quantity',
   'unit',
   'batch',
@@ -85,7 +95,7 @@ const itemColumns = [
   'note',
   'created_at',
   'updated_at',
-  'catalog_references!inner(id,kind,canonical_name)',
+  'catalog_references(id,kind,canonical_name)',
 ].join(',')
 
 function abortError(): DOMException {
@@ -119,20 +129,23 @@ function mapReference(row: CatalogReferenceRow): CatalogReference {
   }
 }
 
-function joinedReference(row: InventoryRow): CatalogReferenceRow {
+function joinedReference(row: InventoryRow): CatalogReferenceRow | null {
   const reference = Array.isArray(row.catalog_references)
     ? row.catalog_references[0]
     : row.catalog_references
-  if (!reference) {
-    throw new InventoryRepositoryError('INVENTORY_UNAVAILABLE')
-  }
-  return reference
+  return reference ?? null
 }
 
 function mapItem(row: InventoryRow): InventoryItem {
+  const reference = joinedReference(row)
   return {
     id: row.id,
-    reference: mapReference(joinedReference(row)),
+    entryName: row.entry_name,
+    reference: reference ? mapReference(reference) : null,
+    canonicalCultivarId: row.canonical_cultivar_id,
+    isFlower: row.is_flower,
+    originOneName: row.origin_one_name,
+    originTwoName: row.origin_two_name,
     quantity: Number(row.quantity),
     unit: row.unit,
     batch: row.batch,
@@ -149,6 +162,9 @@ function insertValues(
 ): Record<string, unknown> {
   return {
     entity_id: input.entityId,
+    entry_name: input.entryName,
+    origin_one_name: input.originOneName,
+    origin_two_name: input.originTwoName,
     quantity: input.quantity,
     unit: input.unit,
     batch: input.batch,

@@ -25,7 +25,10 @@ type InventoryFormProps = {
 
 function initialDraft(item?: InventoryItem): InventoryDraft {
   return {
-    entityId: item?.reference.id ?? '',
+    entryName: item?.entryName ?? item?.reference?.canonicalName ?? '',
+    entityId: item?.reference?.id ?? null,
+    originOneName: item?.originOneName ?? '',
+    originTwoName: item?.originTwoName ?? '',
     quantity: item ? String(item.quantity) : '',
     unit: item?.unit ?? 'g',
     batch: item?.batch ?? '',
@@ -101,9 +104,19 @@ export function InventoryForm({
         Sorte oder Produkt
         <select
           required
-          value={draft.entityId}
+          value={draft.entityId ?? ''}
           aria-invalid={Boolean(errors.entityId)}
-          onChange={(event) => update('entityId', event.target.value)}
+          onChange={(event) => {
+            const entityId = event.target.value || null
+            const reference = references.find(
+              (candidate) => candidate.id === entityId,
+            )
+            setDraft((current) => ({
+              ...current,
+              entityId,
+              entryName: reference?.canonicalName ?? current.entryName,
+            }))
+          }}
         >
           <option value="">Bitte auswählen</option>
           {references.map((reference) => (
@@ -116,6 +129,32 @@ export function InventoryForm({
         </select>
         <FieldError message={errors.entityId} />
       </label>
+
+      <div className="inventory-form-row">
+        <label>
+          Herkunft 1 (optional)
+          <input
+            maxLength={160}
+            autoComplete="off"
+            value={draft.originOneName}
+            aria-invalid={Boolean(errors.originOneName)}
+            onChange={(event) => update('originOneName', event.target.value)}
+          />
+          <FieldError message={errors.originOneName} />
+        </label>
+
+        <label>
+          Herkunft 2 (optional)
+          <input
+            maxLength={160}
+            autoComplete="off"
+            value={draft.originTwoName}
+            aria-invalid={Boolean(errors.originTwoName)}
+            onChange={(event) => update('originTwoName', event.target.value)}
+          />
+          <FieldError message={errors.originTwoName} />
+        </label>
+      </div>
 
       <div className="inventory-form-row">
         <label>

@@ -5,8 +5,13 @@ import type {
 } from './inventory'
 import type { InventoryRepository } from './inventory-repository'
 
+type InMemoryReference = CatalogReference & {
+  canonicalCultivarId?: string | null
+  isFlower?: boolean
+}
+
 type InMemoryInventoryOptions = {
-  references?: CatalogReference[]
+  references?: InMemoryReference[]
   items?: InventoryItem[]
   createId?: () => string
   now?: () => Date
@@ -19,7 +24,7 @@ function cloneReference(reference: CatalogReference): CatalogReference {
 function cloneItem(item: InventoryItem): InventoryItem {
   return {
     ...item,
-    reference: cloneReference(item.reference),
+    reference: item.reference ? cloneReference(item.reference) : null,
   }
 }
 
@@ -34,7 +39,7 @@ async function cancellableTurn(signal?: AbortSignal): Promise<void> {
 }
 
 export class InMemoryInventoryRepository implements InventoryRepository {
-  readonly #references: CatalogReference[]
+  readonly #references: InMemoryReference[]
   readonly #createId: () => string
   readonly #now: () => Date
   #items: InventoryItem[]
@@ -57,11 +62,16 @@ export class InMemoryInventoryRepository implements InventoryRepository {
   }
 
   async create(input: ValidInventoryDraft): Promise<InventoryItem> {
-    const reference = this.#reference(input.entityId)
+    const mapping = this.#mapping(input.entityId)
     const timestamp = this.#now().toISOString()
     const item: InventoryItem = {
       id: this.#createId(),
-      reference,
+      entryName: input.entryName,
+      reference: mapping.reference,
+      canonicalCultivarId: mapping.canonicalCultivarId,
+      isFlower: mapping.isFlower,
+      originOneName: input.originOneName,
+      originTwoName: input.originTwoName,
       quantity: input.quantity,
       unit: input.unit,
       batch: input.batch,
@@ -83,7 +93,10 @@ export class InMemoryInventoryRepository implements InventoryRepository {
     if (!current) throw new Error('Bestandseintrag wurde nicht gefunden.')
     const updated: InventoryItem = {
       ...current,
-      reference: this.#reference(input.entityId),
+      entryName: input.entryName,
+      ...this.#mapping(input.entityId),
+      originOneName: input.originOneName,
+      originTwoName: input.originTwoName,
       quantity: input.quantity,
       unit: input.unit,
       batch: input.batch,
@@ -105,9 +118,27 @@ export class InMemoryInventoryRepository implements InventoryRepository {
     this.#items = this.#items.filter((item) => item.id !== id)
   }
 
-  #reference(id: string): CatalogReference {
+  #mapping(id: string | null): {
+    reference: CatalogReference | null
+    canonicalCultivarId: string | null
+    isFlower: boolean
+  } {
+    if (id === null) {
+      return {
+        reference: null,
+        canonicalCultivarId: null,
+        isFlower: false,
+      }
+    }
+
     const reference = this.#references.find((candidate) => candidate.id === id)
     if (!reference) throw new Error('Katalogreferenz wurde nicht gefunden.')
-    return cloneReference(reference)
+    return {
+      reference: cloneReference(reference),
+      canonicalCultivarId:
+        reference.canonicalCultivarId
+        ?? (reference.kind === 'cultivar' ? reference.id : null),
+      isFlower: reference.isFlower ?? reference.kind === 'cultivar',
+    }
   }
 }
