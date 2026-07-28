@@ -186,6 +186,58 @@ export function mapPublishedCommunityAverage(
   }
 }
 
+export function mapOwnCommunityContribution(
+  row: unknown,
+): OwnCommunityContribution {
+  if (!row || typeof row !== 'object') {
+    throw new Error('Invalid own community contribution')
+  }
+
+  const candidate = row as Record<string, unknown>
+  const cultivarId = candidate.cultivar_id
+  const sourceKind = candidate.source_kind
+  const consentVersion = candidate.consent_version
+  const updatedAt = candidate.updated_at
+
+  if (typeof cultivarId !== 'string' || !isUuid(cultivarId)) {
+    throw new Error('Invalid cultivar_id')
+  }
+  if (sourceKind !== 'label' && sourceKind !== 'laboratory') {
+    throw new Error('Invalid source_kind')
+  }
+  if (
+    typeof consentVersion !== 'string'
+    || consentVersion.trim() !== consentVersion
+    || consentVersion.length < 1
+    || consentVersion.length > 80
+  ) {
+    throw new Error('Invalid consent_version')
+  }
+  if (typeof updatedAt !== 'string' || !isIsoTimestamp(updatedAt)) {
+    throw new Error('Invalid updated_at')
+  }
+
+  const thcPercent = finiteNumeric(candidate.thc_percent, 'thc_percent')
+  const cbdPercent = finiteNumeric(candidate.cbd_percent, 'cbd_percent')
+  if (
+    thcPercent < 0
+    || thcPercent > 70
+    || cbdPercent < 0
+    || cbdPercent > 70
+  ) {
+    throw new Error('Invalid contribution percentage')
+  }
+
+  return {
+    cultivarId,
+    thcPercent,
+    cbdPercent,
+    sourceKind,
+    consentVersion,
+    updatedAt,
+  }
+}
+
 export function formatCommunityPercent(
   value: number,
   cannabinoid: 'THC' | 'CBD',
