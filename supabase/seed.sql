@@ -16,6 +16,12 @@ insert into private.legal_versions(kind, version, active, effective_at) values
     'weedypedia-adult-2026-07-25',
     true,
     '2026-07-25T00:00:00Z'
+  ),
+  (
+    'community_values',
+    'weedypedia-community-values-2026-07-28',
+    true,
+    '2026-07-28T00:00:00Z'
   )
 on conflict (kind, version) do update
 set active = excluded.active,

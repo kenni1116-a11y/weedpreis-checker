@@ -269,10 +269,11 @@ set kind = excluded.kind,
     canonical_name = excluded.canonical_name;
 
 select throws_ok(
-  $$insert into api.inventory_items(user_id, entity_id, quantity, unit)
+  $$insert into api.inventory_items(user_id, entity_id, entry_name, quantity, unit)
     values (
       '00000000-0000-4000-8000-000000000001',
       '10000000-0000-4000-8000-000000000001',
+      'Test-Cultivar – keine Echtdaten',
       0,
       'g'
     )$$,
@@ -282,10 +283,11 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$insert into api.inventory_items(user_id, entity_id, quantity, unit, note)
+  $$insert into api.inventory_items(user_id, entity_id, entry_name, quantity, unit, note)
     values (
       '00000000-0000-4000-8000-000000000001',
       '10000000-0000-4000-8000-000000000001',
+      'Test-Cultivar – keine Echtdaten',
       1,
       'g',
       repeat('x', 1001)

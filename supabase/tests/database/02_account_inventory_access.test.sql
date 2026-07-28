@@ -39,11 +39,14 @@ insert into api.catalog_references(id, kind, canonical_name) values
 on conflict (id) do update
 set kind = excluded.kind,
     canonical_name = excluded.canonical_name;
-insert into api.inventory_items(id, user_id, entity_id, quantity, unit) values
+insert into api.inventory_items(
+  id, user_id, entity_id, entry_name, quantity, unit
+) values
   (
     '20000000-0000-4000-8000-000000000001',
     '00000000-0000-4000-8000-00000000000a',
     '10000000-0000-4000-8000-000000000001',
+    'Test-Cultivar – keine Echtdaten',
     3.5,
     'g'
   );
