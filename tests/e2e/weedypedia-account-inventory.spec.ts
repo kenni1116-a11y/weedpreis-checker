@@ -14,11 +14,6 @@ const anonKey = process.env.E2E_SUPABASE_ANON_KEY
 const passwordA = 'Synthetic-A-Password-2026!'
 const recoveredPasswordA = 'Recovered-A-Password-2026!'
 const passwordB = 'Synthetic-B-Password-2026!'
-const emailA = 'account-a@example.invalid'
-const changedEmailA = 'account-a-new@example.invalid'
-const emailB = 'account-b@example.invalid'
-const usernameA = 'Account.A'
-const usernameB = 'Account.B'
 const canonicalCultivarId = '10000000-0000-4000-8000-000000000001'
 const aliasName = 'Test-Hybrid – keine Echtdaten'
 const canonicalCultivarName = 'Test-Cultivar – keine Echtdaten'
@@ -363,6 +358,16 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   test.setTimeout(300_000)
   expect(apiUrl, 'E2E_SUPABASE_API_URL').toBeTruthy()
   expect(anonKey, 'E2E_SUPABASE_ANON_KEY').toBeTruthy()
+  const runMarker = (
+    `${process.env.GITHUB_RUN_ID ?? Date.now().toString(36)}-`
+    + `${process.env.GITHUB_RUN_ATTEMPT ?? 'local'}`
+  ).slice(-12)
+  const identityMarker = `${runMarker}-${testInfo.retry}`
+  const emailA = `account-a-${identityMarker}@example.invalid`
+  const changedEmailA = `account-a-new-${identityMarker}@example.invalid`
+  const emailB = `account-b-${identityMarker}@example.invalid`
+  const usernameA = `Account.A.${identityMarker}`
+  const usernameB = `Account.B.${identityMarker}`
   await clearMailpit(request)
   await page.goto('/')
 
@@ -950,8 +955,9 @@ test('verified iPhone account keeps inventory private through its full lifecycle
   )
   await page.goto(confirmationLink(oldAddressChange.detail))
   await page.goto(confirmationLink(newAddressChange.detail))
-  await page.evaluate(() => localStorage.clear())
-  await page.goto('/')
+  lastCode = await completeMfa(page, secret!, lastCode)
+  await page.getByRole('button', { name: 'Profil' }).click()
+  await page.getByRole('button', { name: 'Abmelden' }).click()
   await login(page, changedEmailA, recoveredPasswordA)
   lastCode = await completeMfa(page, secret!, lastCode)
   tokenA = await accessToken(page)
