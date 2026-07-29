@@ -16,7 +16,6 @@ type AuthGateProps = {
 }
 
 function isPasswordRecoveryCallback(): boolean {
-  if (!window.location.pathname.endsWith('/auth/callback')) return false
   const search = new URLSearchParams(window.location.search)
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
   return search.get('type') === 'recovery' || hash.get('type') === 'recovery'

@@ -162,6 +162,29 @@ describe('AuthGate', () => {
     expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
   })
 
+  it('renders the recovery form when GitHub Pages returns to the app root', async () => {
+    window.history.replaceState({}, '', '/weedpreis-checker/#type=recovery')
+    const service = createInMemoryAuthService({
+      initialState: {
+        status: 'signed-in',
+        user: {
+          id: 'synthetic-user',
+          username: 'Ken.Test',
+          email: 'ken@example.invalid',
+          emailVerified: true,
+          aal: 'aal1',
+        },
+      },
+    })
+
+    renderGate(service)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Neues Passwort festlegen' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
+  })
+
   it('keeps a consumed recovery callback through a required MFA step', async () => {
     window.history.replaceState({}, '', '/auth/callback#type=recovery')
     const service = createInMemoryAuthService({
