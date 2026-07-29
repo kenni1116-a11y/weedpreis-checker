@@ -1,19 +1,29 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { AppNavigation } from './AppNavigation'
 
-it('exposes all three primary destinations', async () => {
-  const onSelect = vi.fn()
-  render(<AppNavigation active="search" onSelect={onSelect} />)
+afterEach(() => cleanup())
 
-  expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+it('exposes all four Weedypedia destinations', async () => {
+  const onSelect = vi.fn()
+  render(<AppNavigation active="discover" onSelect={onSelect} />)
+
+  expect(
+    screen.getAllByRole('button').map((button) => button.textContent),
+  ).toEqual([
+    'Entdecken',
     'Suche',
-    'Favoriten',
-    'Info',
+    'Bestand',
+    'Profil',
   ])
 
-  await userEvent.click(screen.getByRole('button', { name: 'Info' }))
+  expect(screen.getByRole(
+    'button',
+    { name: 'Entdecken' },
+  )).toHaveAttribute('aria-current', 'page')
 
-  expect(onSelect).toHaveBeenCalledWith('info')
+  await userEvent.click(screen.getByRole('button', { name: 'Bestand' }))
+
+  expect(onSelect).toHaveBeenCalledWith('inventory')
 })

@@ -1,127 +1,278 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OffersRepository } from '../data/offers-repository'
-import { syntheticOffers } from '../data/synthetic-offers'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AuthState } from '../auth/auth-service'
+import { createInMemoryAuthService } from '../auth/in-memory-auth-service'
+import { InMemoryCatalogRepository } from '../catalog/in-memory-catalog-repository'
+import { InMemoryCommunityRepository } from '../community/in-memory-community-repository'
+import type { RuntimeConfig } from '../config/runtime-config'
+import { InMemoryInventoryRepository } from '../inventory/in-memory-inventory-repository'
 import { App } from './App'
 
-const pickupSearchTotal = (_: string, element: Element | null) =>
-  element?.tagName === 'P' && element.textContent === 'Gesamtpreis für 7 g: 45,43 €'
+const browserFactories = vi.hoisted(() => ({
+  createClient: vi.fn(),
+  createAuthService: vi.fn(),
+  createCatalogRepository: vi.fn(),
+  createCommunityRepository: vi.fn(),
+  createInventoryRepository: vi.fn(),
+}))
 
-const pickupFavoriteTotal = (_: string, element: Element | null) =>
-  element?.tagName === 'P' && element.textContent === 'Gesamtpreis für 7 g (Abholung): 45,43 €'
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: browserFactories.createClient,
+}))
+vi.mock('../auth/supabase-auth-service', () => ({
+  createSupabaseAuthService: browserFactories.createAuthService,
+}))
+vi.mock('../catalog/supabase-catalog-repository', () => ({
+  createSupabaseCatalogRepository:
+    browserFactories.createCatalogRepository,
+}))
+vi.mock('../community/supabase-community-repository', () => ({
+  createSupabaseCommunityRepository:
+    browserFactories.createCommunityRepository,
+}))
+vi.mock('../inventory/supabase-inventory-repository', () => ({
+  createSupabaseInventoryRepository:
+    browserFactories.createInventoryRepository,
+}))
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
+const config: RuntimeConfig = {
+  supabaseUrl: 'https://example.supabase.co',
+  supabasePublishableKey: 'sb_publishable_test',
+  privacyVersion: 'weedypedia-privacy-2026-07-25',
+  termsVersion: 'weedypedia-terms-2026-07-25',
+  communityValuesConsentVersion:
+    'weedypedia-community-values-2026-07-28',
+  authRedirectUrl: 'https://example.invalid/auth/callback',
+}
+
+const signedInState: AuthState = {
+  status: 'signed-in',
+  user: {
+    id: 'synthetic-user',
+    username: 'Test.User',
+    email: 'test@example.invalid',
+    emailVerified: true,
+    aal: 'aal2',
+  },
+}
+
+function renderApp(state: AuthState) {
+  const authService = createInMemoryAuthService({
+    initialState: state,
+    factors: state.status === 'mfa-required' ? state.factors : [],
   })
-  return { promise, resolve }
+  const catalogRepository = new InMemoryCatalogRepository()
+  const communityRepository = new InMemoryCommunityRepository()
+  const inventoryRepository = new InMemoryInventoryRepository()
+  return {
+    authService,
+    catalogRepository,
+    communityRepository,
+    inventoryRepository,
+    ...render(
+      <App
+        authService={authService}
+        catalogRepository={catalogRepository}
+        communityRepository={communityRepository}
+        inventoryRepository={inventoryRepository}
+        config={config}
+      />,
+    ),
+  }
 }
 
 describe('App', () => {
-  beforeEach(() => {
+  afterEach(() => {
     cleanup()
     localStorage.clear()
-    localStorage.setItem('weedpreis.adult', 'true')
+    vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
-  it('identifies itself as a neutral pharmacy comparison', () => {
-    render(<App />)
-    expect(screen.getByRole('heading', { name: 'Weedpreis' })).toBeInTheDocument()
-    expect(screen.getByText('Neutraler Apothekenvergleich')).toBeInTheDocument()
-  })
+  it('builds all browser repositories from one API-schema client', async () => {
+    const sharedClient = { kind: 'shared-api-client' }
+    const authService = createInMemoryAuthService({
+      initialState: signedInState,
+    })
+    const catalogRepository = new InMemoryCatalogRepository()
+    const communityRepository = new InMemoryCommunityRepository()
+    const inventoryRepository = new InMemoryInventoryRepository()
+    browserFactories.createClient.mockReturnValue(sharedClient)
+    browserFactories.createAuthService.mockReturnValue(authService)
+    browserFactories.createCatalogRepository.mockReturnValue(
+      catalogRepository,
+    )
+    browserFactories.createCommunityRepository.mockReturnValue(
+      communityRepository,
+    )
+    browserFactories.createInventoryRepository.mockReturnValue(
+      inventoryRepository,
+    )
 
-  it('keeps a pickup favorite at the searched quantity', async () => {
-    const user = userEvent.setup()
-    const app = within(render(<App />).container)
+    render(<App config={config} />)
 
-    await user.click(app.getByRole('button', { name: 'Abholung' }))
-    await user.clear(app.getByRole('spinbutton', { name: 'Menge' }))
-    await user.type(app.getByRole('spinbutton', { name: 'Menge' }), '7')
-    await user.type(app.getByRole('searchbox'), 'Alpha')
-    await user.click(app.getByRole('button', { name: 'Suchen' }))
-
-    expect(await app.findByText(pickupSearchTotal)).toBeInTheDocument()
-    await user.click(app.getByRole('button', { name: 'Als Favorit speichern' }))
-    await user.click(app.getByRole('button', { name: 'Favoriten' }))
-
-    expect(await app.findByText(pickupFavoriteTotal)).toBeInTheDocument()
-  })
-
-  it('restores a persisted favorite after an app reload without requiring a search', async () => {
-    localStorage.setItem('weedpreis.favorites', JSON.stringify(['offer-a']))
-    const user = userEvent.setup()
-    const app = within(render(<App />).container)
-
-    await user.click(app.getByRole('button', { name: 'Favoriten' }))
-
-    expect(await app.findByText('Muster-Apotheke A – Testdaten')).toBeInTheDocument()
-    expect(app.getByText((_, element) =>
-      element?.tagName === 'STRONG' && element.textContent === '6,49 € / g',
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Weedypedia' },
     )).toBeInTheDocument()
-    expect(app.getByText((_, element) =>
-      element?.tagName === 'P' && element.textContent === 'Gesamtpreis für 10 g (Versand): 69,89 €',
-    )).toBeInTheDocument()
-    expect(app.getByText(/feed · zuletzt geprüft/)).toBeInTheDocument()
-  })
-
-  it('keeps favorite A visible after a later search returns only B', async () => {
-    const user = userEvent.setup()
-    const app = within(render(<App />).container)
-
-    await user.type(app.getByRole('searchbox'), 'Alpha')
-    await user.click(app.getByRole('button', { name: 'Suchen' }))
-    const pharmacyA = await app.findByRole('heading', { name: 'Muster-Apotheke A – Testdaten' })
-    await user.click(within(pharmacyA.closest('article')!).getByRole('button', { name: 'Als Favorit speichern' }))
-
-    await user.clear(app.getByRole('searchbox'))
-    await user.type(app.getByRole('searchbox'), 'Beta')
-    await user.click(app.getByRole('button', { name: 'Suchen' }))
-    expect(await app.findByText('Testextrakt Beta 10/10 · Testlabor Süd')).toBeInTheDocument()
-    await user.click(app.getByRole('button', { name: 'Favoriten' }))
-
-    expect(await app.findByRole('heading', { name: 'Muster-Apotheke A – Testdaten' })).toBeInTheDocument()
-    expect(app.queryByText('Muster-Apotheke C – Testdaten')).not.toBeInTheDocument()
-  })
-
-  it('ignores an obsolete search callback after the search tab remounts', async () => {
-    localStorage.setItem('weedpreis.favorites', JSON.stringify(['offer-a']))
-    const first = deferred<Awaited<ReturnType<OffersRepository['search']>>>()
-    const second = deferred<Awaited<ReturnType<OffersRepository['search']>>>()
-    const search = vi.fn()
-      .mockImplementationOnce(() => first.promise)
-      .mockImplementationOnce(() => second.promise)
-    const repository: OffersRepository = {
-      search,
-      async getByIds(ids) {
-        return ids.map((id) => id === 'offer-a'
-          ? { id, status: 'found', offer: syntheticOffers[0] }
-          : { id, status: 'not-found' },
-        )
-      },
+    expect(browserFactories.createClient).toHaveBeenCalledTimes(1)
+    expect(browserFactories.createClient).toHaveBeenCalledWith(
+      config.supabaseUrl,
+      config.supabasePublishableKey,
+      expect.objectContaining({ db: { schema: 'api' } }),
+    )
+    for (const factory of [
+      browserFactories.createCatalogRepository,
+      browserFactories.createCommunityRepository,
+      browserFactories.createInventoryRepository,
+    ]) {
+      expect(factory).toHaveBeenCalledWith({ client: sharedClient })
     }
-    const user = userEvent.setup()
-    const app = within(render(<App repository={repository} />).container)
-
-    await user.clear(app.getByRole('spinbutton', { name: 'Menge' }))
-    await user.type(app.getByRole('spinbutton', { name: 'Menge' }), '5')
-    await user.click(app.getByRole('button', { name: 'Suchen' }))
-    await user.click(app.getByRole('button', { name: 'Info' }))
-    await user.click(app.getByRole('button', { name: 'Suche' }))
-    await user.clear(app.getByRole('spinbutton', { name: 'Menge' }))
-    await user.type(app.getByRole('spinbutton', { name: 'Menge' }), '7')
-    await user.click(app.getByRole('button', { name: 'Suchen' }))
-
-    expect(search).toHaveBeenCalledTimes(2)
-    await act(async () => second.resolve([]))
-    expect(await app.findByText('Keine passenden Angebote gefunden.')).toBeInTheDocument()
-    await act(async () => first.resolve([]))
-    await user.click(app.getByRole('button', { name: 'Favoriten' }))
-
-    expect(await app.findByText((_, element) =>
-      element?.tagName === 'P' && element.textContent === 'Gesamtpreis für 7 g (Versand): 50,42 €',
-    )).toBeInTheDocument()
-    expect(app.queryByText(/Gesamtpreis für 5 g/)).not.toBeInTheDocument()
+    expect(browserFactories.createAuthService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client: sharedClient,
+        config,
+      }),
+    )
   })
+
+  it('rejects incomplete dependency injection explicitly', () => {
+    const authService = createInMemoryAuthService({
+      initialState: signedInState,
+    })
+
+    expect(() => render(
+      <App authService={authService} config={config} />,
+    )).toThrow(
+      'Auth-Service, Bestands-, Katalog- und Community-Repository müssen gemeinsam gesetzt werden.',
+    )
+  })
+
+  it('identifies itself as Weedypedia after authentication', async () => {
+    renderApp(signedInState)
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Weedypedia' },
+    )).toBeInTheDocument()
+    expect(screen.getByText(
+      'Sorten, Herkunft und Produkte nachvollziehbar verbunden',
+    )).toBeInTheDocument()
+  })
+
+  it('keeps inventory behind verified authentication', async () => {
+    localStorage.setItem('weedpreis.adult', 'true')
+    renderApp({ status: 'signed-out' })
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Bei Weedypedia anmelden' },
+    )).toBeInTheDocument()
+    expect(screen.queryByRole(
+      'button',
+      { name: 'Bestand' },
+    )).not.toBeInTheDocument()
+  })
+
+  it('announces session loading before rendering the shell', () => {
+    const authService = createInMemoryAuthService()
+    vi.spyOn(authService, 'currentState').mockReturnValue(
+      new Promise(() => undefined),
+    )
+    render(
+      <App
+        authService={authService}
+        catalogRepository={new InMemoryCatalogRepository()}
+        communityRepository={new InMemoryCommunityRepository()}
+        inventoryRepository={new InMemoryInventoryRepository()}
+        config={config}
+      />,
+    )
+
+    expect(screen.getByRole(
+      'status',
+      { name: 'Kontostatus wird geladen' },
+    )).toBeInTheDocument()
+    expect(screen.queryByRole(
+      'heading',
+      { name: 'Weedypedia' },
+    )).not.toBeInTheDocument()
+  })
+
+  it('keeps the shell closed until email verification completes', async () => {
+    renderApp({
+      status: 'verification-required',
+      email: 'test@example.invalid',
+    })
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Verifizierungsnachricht versendet' },
+    )).toBeInTheDocument()
+    expect(screen.queryByRole(
+      'navigation',
+      { name: 'Hauptnavigation' },
+    )).not.toBeInTheDocument()
+  })
+
+  it('requires TOTP before showing private tabs', async () => {
+    const { communityRepository } = renderApp({
+      status: 'mfa-required',
+      email: 'test@example.invalid',
+      factors: [{
+        id: 'factor-1',
+        friendlyName: 'Weedypedia',
+        status: 'verified',
+      }],
+    })
+    const getOwn = vi.spyOn(communityRepository, 'getOwn')
+    const getPublished = vi.spyOn(communityRepository, 'getPublished')
+
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Zwei-Faktor-Bestätigung' },
+    )).toBeInTheDocument()
+    expect(screen.queryByRole(
+      'button',
+      { name: 'Bestand' },
+    )).not.toBeInTheDocument()
+    expect(getOwn).not.toHaveBeenCalled()
+    expect(getPublished).not.toHaveBeenCalled()
+  })
+
+  it('opens the private inventory and account profile tabs', async () => {
+    renderApp(signedInState)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole(
+      'button',
+      { name: 'Bestand' },
+    ))
+    expect(await screen.findByRole(
+      'heading',
+      { name: 'Mein Bestand' },
+    )).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Profil' }))
+    expect(await screen.findByRole(
+      'region',
+      { name: 'Privates Konto' },
+    )).toBeInTheDocument()
+  })
+
+  it.each(['Entdecken', 'Suche'])(
+    'marks the %s knowledge area as the next sourced stage',
+    async (tab) => {
+      renderApp(signedInState)
+      const user = userEvent.setup()
+
+      await user.click(await screen.findByRole('button', { name: tab }))
+
+      expect(screen.getByText(
+        'Der nachweisbare Weedypedia-Wissenskatalog wird in der nächsten freigegebenen Etappe verbunden. Konto und persönlicher Bestand sind bereits getrennt abgesichert.',
+      )).toBeInTheDocument()
+      expect(screen.queryByText(/Apothekenvergleich/)).not.toBeInTheDocument()
+    },
+  )
 })

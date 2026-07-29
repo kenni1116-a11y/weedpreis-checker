@@ -17,8 +17,33 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Require browser-safe Weedypedia configuration
+        env:
+          VITE_SUPABASE_URL: "${{ vars.SUPABASE_URL }}"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "${{ vars.SUPABASE_PUBLISHABLE_KEY }}"
+          VITE_PRIVACY_VERSION: "${{ vars.PRIVACY_VERSION }}"
+          VITE_TERMS_VERSION: "${{ vars.TERMS_VERSION }}"
+          VITE_COMMUNITY_VALUES_CONSENT_VERSION: "${{ vars.COMMUNITY_VALUES_CONSENT_VERSION }}"
+          VITE_AUTH_REDIRECT_URL: "${{ vars.AUTH_REDIRECT_URL }}"
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
+          test -n "$VITE_PRIVACY_VERSION"
+          test -n "$VITE_TERMS_VERSION"
+          test -n "$VITE_COMMUNITY_VALUES_CONSENT_VERSION"
+          test -n "$VITE_AUTH_REDIRECT_URL"
+          case "$VITE_SUPABASE_PUBLISHABLE_KEY" in
+            sb_secret_*) exit 1 ;;
+          esac
       - run: pnpm build
-        env: { VITE_BASE_PATH: "/${{ github.event.repository.name }}/" }
+        env:
+          VITE_BASE_PATH: "/${{ github.event.repository.name }}/"
+          VITE_SUPABASE_URL: "${{ vars.SUPABASE_URL }}"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "${{ vars.SUPABASE_PUBLISHABLE_KEY }}"
+          VITE_PRIVACY_VERSION: "${{ vars.PRIVACY_VERSION }}"
+          VITE_TERMS_VERSION: "${{ vars.TERMS_VERSION }}"
+          VITE_COMMUNITY_VALUES_CONSENT_VERSION: "${{ vars.COMMUNITY_VALUES_CONSENT_VERSION }}"
+          VITE_AUTH_REDIRECT_URL: "${{ vars.AUTH_REDIRECT_URL }}"
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
       - id: deployment

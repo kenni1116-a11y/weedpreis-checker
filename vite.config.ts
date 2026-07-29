@@ -15,9 +15,9 @@ export default defineConfig(({ mode }) => {
         },
         manifest: {
           lang: 'de',
-          name: 'Weedpreis – Neutraler Apothekenvergleich',
-          short_name: 'Weedpreis',
-          description: 'Neutraler Preis- und Verfügbarkeitsvergleich für Medizinalcannabis.',
+          name: 'Weedypedia – Sortenwissen mit Quellen',
+          short_name: 'Weedypedia',
+          description: 'Nachvollziehbare Informationen zu Cannabis-Sorten, Herkunft, Verwandtschaft und medizinischen Produkten.',
           theme_color: '#07110f',
           background_color: '#07110f',
           display: 'standalone',

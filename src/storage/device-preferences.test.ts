@@ -5,11 +5,10 @@ describe('device preferences', () => {
   beforeEach(() => localStorage.clear())
   afterEach(() => vi.restoreAllMocks())
 
-  it('stores only an adult boolean and favorite IDs', () => {
-    devicePreferences.confirmAdult()
+  it('stores only legacy favorite IDs', () => {
     devicePreferences.toggleFavorite('offer-a')
 
-    expect(Object.keys(localStorage).sort()).toEqual(['weedpreis.adult', 'weedpreis.favorites'])
+    expect(Object.keys(localStorage)).toEqual(['weedpreis.favorites'])
     expect(devicePreferences.getFavoriteIds()).toEqual(['offer-a'])
   })
 

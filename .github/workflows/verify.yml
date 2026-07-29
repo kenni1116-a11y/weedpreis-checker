@@ -12,5 +12,43 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
-      - run: pnpm build
+      - run: pnpm exec supabase start
+      - name: Write browser-safe local status
+        shell: bash
+        run: |
+          umask 077
+          pnpm exec supabase status -o env \
+            | grep -E '^(API_URL|ANON_KEY)=' \
+            > supabase/.temp/status.env
+          chmod 600 supabase/.temp/status.env
+          test "$(wc -l < supabase/.temp/status.env)" -eq 2
+      - name: Test Edge Function boundaries
+        run: pnpm test:functions
+      - name: Test database contracts and access
+        run: pnpm test:db
+      - name: Lint database functions
+        run: pnpm exec supabase db lint --schema api,catalog,private,public --level error --fail-on error
+      - name: Test application contracts
+        run: pnpm test
+      - name: Build browser application
+        run: pnpm build
+      - name: Reject server secrets in browser bundle
+        shell: bash
+        run: |
+          if grep -R -n -E \
+            'SOURCE_IMPORT_TRIGGER_TOKEN|SOURCE_INGESTOR_POOLER_URL|SUPABASE_(SERVICE_ROLE|SECRET)_KEY' \
+            dist; then
+            echo "Server-only secret name found in browser bundle."
+            exit 1
+          fi
+      - run: pnpm exec playwright install --with-deps webkit
+      - run: pnpm test:e2e
+      - name: Upload failed iPhone evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weedypedia-playwright-evidence
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore

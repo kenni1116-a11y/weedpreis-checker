@@ -1,8 +1,8 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { App } from '../app/App'
 import type { OffersRepository } from '../data/offers-repository'
+import { inMemoryOffersRepository } from '../data/synthetic-offers'
 import type { RankedOffer } from '../domain/offer'
 import { SearchExperience } from './SearchExperience'
 
@@ -50,15 +50,13 @@ function deferredRepository(search: OffersRepository['search']): OffersRepositor
 beforeEach(() => {
   cleanup()
   localStorage.clear()
-  localStorage.setItem('weedpreis.adult', 'true')
 })
 
 it('searches test offers and shows transparent totals', async () => {
   const user = userEvent.setup()
 
-  render(<App />)
+  render(<SearchExperience repository={inMemoryOffersRepository} />)
 
-  expect(screen.getByText('Ausschließlich synthetische Testdaten')).toBeInTheDocument()
   await user.type(screen.getByRole('searchbox'), 'Alpha')
   await user.click(screen.getByRole('button', { name: 'Suchen' }))
 
@@ -69,7 +67,7 @@ it('searches test offers and shows transparent totals', async () => {
 it('renders extract price and quantity totals in milliliters', async () => {
   const user = userEvent.setup()
 
-  render(<App />)
+  render(<SearchExperience repository={inMemoryOffersRepository} />)
   await user.type(screen.getByRole('searchbox'), 'Beta')
   await user.click(screen.getByRole('button', { name: 'Suchen' }))
 
@@ -158,7 +156,7 @@ it('keeps a newer error when an older search resolves afterwards', async () => {
 
 it('states that pickup locations are synthetic and not postcode-resolved', async () => {
   const user = userEvent.setup()
-  render(<App />)
+  render(<SearchExperience repository={inMemoryOffersRepository} />)
 
   await user.click(screen.getByRole('button', { name: 'Abholung' }))
 
