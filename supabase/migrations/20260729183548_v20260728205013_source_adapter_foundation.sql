@@ -1,3 +1,4 @@
+-- Remote staging version: 20260729183548; original version: 20260728205013.
 create extension if not exists pgcrypto with schema extensions;
 
 do $$

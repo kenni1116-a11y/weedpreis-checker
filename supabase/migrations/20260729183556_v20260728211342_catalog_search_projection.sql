@@ -1,3 +1,4 @@
+-- Remote staging version: 20260729183556; original version: 20260728211342.
 alter table api.catalog_references
   add column canonical_cultivar_id uuid
     references catalog.entities(id) on delete restrict,

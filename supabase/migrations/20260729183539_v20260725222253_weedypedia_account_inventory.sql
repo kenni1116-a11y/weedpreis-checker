@@ -1,3 +1,4 @@
+-- Remote staging version: 20260729183539; original version: 20260725222253.
 create schema if not exists private;
 create schema if not exists catalog;
 create schema if not exists api;

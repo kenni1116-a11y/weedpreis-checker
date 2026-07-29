@@ -1,3 +1,4 @@
+-- Remote staging version: 20260729183611; original version: 20260729002800.
 create or replace function api.upsert_my_community_flower_contribution(
   p_cultivar_id uuid,
   p_thc_percent numeric,

@@ -1,3 +1,4 @@
+-- Remote staging version: 20260729183603; original version: 20260728214423.
 alter table private.legal_versions
   drop constraint legal_versions_kind_check;
 
