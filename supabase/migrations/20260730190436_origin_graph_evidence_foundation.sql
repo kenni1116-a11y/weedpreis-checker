@@ -59,8 +59,8 @@ immutable
 security invoker
 set search_path = ''
 as $$
-  select case
-    when jsonb_typeof(payload) <> 'object' then false
+  select coalesce(case
+    when jsonb_typeof(payload) is distinct from 'object' then false
     else
       private.jsonb_has_exact_keys(
         payload,
@@ -71,7 +71,7 @@ as $$
       and btrim(payload ->> 'sourceLocator') = payload ->> 'sourceLocator'
       and payload ->> 'extractionMethod'
         in ('structured', 'manual', 'ai_assisted')
-  end;
+  end, false);
 $$;
 
 revoke all on function private.source_assertion_trace_valid(jsonb)
@@ -939,10 +939,16 @@ begin
       from jsonb_array_elements(record_value -> 'assertions')
         with ordinality as item(value, ordinality)
     loop
-      if not private.source_assertion_trace_valid(assertion_value -> 'trace')
-         or not private.source_assertion_payload_valid(
-           assertion_value ->> 'kind',
-           assertion_value
+      if not coalesce(
+           private.source_assertion_trace_valid(assertion_value -> 'trace'),
+           false
+         )
+         or not coalesce(
+           private.source_assertion_payload_valid(
+             assertion_value ->> 'kind',
+             assertion_value
+           ),
+           false
          ) then
         raise exception using
           errcode = '22023',
@@ -1216,7 +1222,16 @@ create table catalog.knowledge_snapshot_claims (
     )
   ),
   value jsonb not null,
-  evidence_status text not null,
+  evidence_status text not null check (
+    evidence_status in (
+      'confirmed',
+      'single_source',
+      'disputed',
+      'historical',
+      'unknown',
+      'retracted'
+    )
+  ),
   evidence jsonb not null check (jsonb_typeof(evidence) = 'object'),
   primary key (snapshot_id, assertion_id)
 );
@@ -1247,7 +1262,16 @@ create table catalog.knowledge_snapshot_edges (
     )
   ),
   position smallint check (position in (1, 2)),
-  evidence_status text not null,
+  evidence_status text not null check (
+    evidence_status in (
+      'confirmed',
+      'single_source',
+      'disputed',
+      'historical',
+      'unknown',
+      'retracted'
+    )
+  ),
   details jsonb not null check (jsonb_typeof(details) = 'object'),
   evidence jsonb not null check (jsonb_typeof(evidence) = 'object'),
   primary key (snapshot_id, assertion_id)

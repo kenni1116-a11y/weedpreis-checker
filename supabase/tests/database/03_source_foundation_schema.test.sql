@@ -681,6 +681,107 @@ select throws_ok(
   'adapter contract versions other than 2 are rejected'
 );
 
+select is(
+  private.source_assertion_trace_valid(null::jsonb),
+  false,
+  'trace validation is total for a missing SQL value'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_build_object(
+      'contractVersion', 2,
+      'sourceId', 'synthetic-schema-source',
+      'startedAt', '2026-07-28T18:08:00.000Z',
+      'completedAt', '2026-07-28T18:08:01.000Z',
+      'cursor', null,
+      'records', pg_catalog.jsonb_build_array(
+        pg_catalog.jsonb_build_object(
+          'externalRecordKey',
+            'synthetic-missing-trace-' || missing_trace.assertion_kind,
+          'upstreamState', 'present',
+          'retrievedAt', '2026-07-28T18:08:01.000Z',
+          'sourceVersion', 'synthetic-missing-trace-fixture-1',
+          'evidence', pg_catalog.jsonb_build_object(
+            'kind', 'checksum',
+            'algorithm', 'sha256',
+            'digest',
+              pg_catalog.md5(missing_trace.assertion_kind)
+              || pg_catalog.md5(missing_trace.assertion_kind),
+            'retrievalReference',
+              'https://example.invalid/missing-trace-'
+              || missing_trace.assertion_kind
+          ),
+          'validFrom', null,
+          'validTo', null,
+          'assertions',
+            pg_catalog.jsonb_build_array(missing_trace.assertion_payload)
+        )
+      ),
+      'errors', pg_catalog.jsonb_build_array()
+    )::text
+  ),
+  '22023',
+  null,
+  pg_catalog.format(
+    'a version-2 %s assertion cannot use its trace-free legacy shape',
+    missing_trace.assertion_kind
+  )
+)
+from (
+  values
+    (
+      'name',
+      '{
+        "kind":"name",
+        "subjectExternalKey":"synthetic-missing-trace-name",
+        "name":"Synthetic missing-trace name",
+        "language":"en"
+      }'::jsonb
+    ),
+    (
+      'alias',
+      '{
+        "kind":"alias",
+        "subjectExternalKey":"synthetic-missing-trace-alias",
+        "name":"Synthetic missing-trace alias",
+        "language":"en"
+      }'::jsonb
+    ),
+    (
+      'lineage',
+      '{
+        "kind":"lineage",
+        "subjectExternalKey":"synthetic-missing-trace-lineage",
+        "parentExternalKey":"synthetic-missing-trace-parent",
+        "relationship":"reported_parent",
+        "position":1
+      }'::jsonb
+    ),
+    (
+      'product_cultivar',
+      '{
+        "kind":"product_cultivar",
+        "subjectExternalKey":"synthetic-missing-trace-product_cultivar",
+        "cultivarExternalKey":"synthetic-missing-trace-cultivar",
+        "productForm":"flower"
+      }'::jsonb
+    ),
+    (
+      'measurement',
+      '{
+        "kind":"measurement",
+        "subjectExternalKey":"synthetic-missing-trace-measurement",
+        "analyte":"thc",
+        "value":12.5,
+        "unit":"percent",
+        "productForm":"flower",
+        "measuredAt":null
+      }'::jsonb
+    )
+) as missing_trace(assertion_kind, assertion_payload);
+
 select throws_ok(
   pg_catalog.format(
     'select * from private.record_source_import(%L::jsonb)',
@@ -972,6 +1073,74 @@ where assertion.source_record_id = (
     and external_record_key = 'synthetic-graph-record-001'
 )
   and assertion.assertion_index = 5;
+
+select throws_ok(
+  $$insert into catalog.knowledge_snapshot_claims(
+      snapshot_id,
+      assertion_id,
+      entity_id,
+      claim_kind,
+      value,
+      evidence_status,
+      evidence
+    )
+    select
+      '34000000-0000-4000-8000-000000000002',
+      assertion.id,
+      '30000000-0000-4000-8000-000000000002',
+      'traditional_classification',
+      '"hybrid"'::jsonb,
+      'synthetic_invalid',
+      '{"sourceLocator":"$.synthetic.classification"}'::jsonb
+    from catalog.normalized_assertions assertion
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and assertion.assertion_index = 1$$,
+  '23514',
+  null,
+  'snapshot claims reject evidence states outside the closed set'
+);
+
+select throws_ok(
+  $$insert into catalog.knowledge_snapshot_edges(
+      snapshot_id,
+      assertion_id,
+      from_entity_id,
+      to_entity_id,
+      layer,
+      relationship,
+      position,
+      evidence_status,
+      details,
+      evidence
+    )
+    select
+      '34000000-0000-4000-8000-000000000002',
+      assertion.id,
+      '30000000-0000-4000-8000-000000000002',
+      '30000000-0000-4000-8000-000000000003',
+      'genetic_similarity',
+      'genetic_similarity',
+      null,
+      'synthetic_invalid',
+      '{"synthetic":true}'::jsonb,
+      '{"sourceLocator":"$.synthetic.geneticRelation"}'::jsonb
+    from catalog.normalized_assertions assertion
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and assertion.assertion_index = 5$$,
+  '23514',
+  null,
+  'snapshot edges reject evidence states outside the closed set'
+);
 
 insert into catalog.knowledge_current_snapshot(singleton, snapshot_id)
 values (
