@@ -1191,6 +1191,7 @@ as $$
 declare
   assertion_row catalog.normalized_assertions%rowtype;
   source_status text;
+  import_contract_version smallint;
   entity_kind text;
   related_kind text;
   relationship_kind text;
@@ -1219,6 +1220,35 @@ begin
   join catalog.source_records as source_record
     on source_record.source_id = source.id
   where source_record.id = assertion_row.source_record_id;
+
+  select import_run.contract_version
+  into import_contract_version
+  from catalog.source_records as source_record
+  join catalog.import_runs as import_run
+    on import_run.id = source_record.import_run_id
+   and import_run.source_id = source_record.source_id
+  where source_record.id = assertion_row.source_record_id
+  for update of import_run;
+
+  if import_contract_version is distinct from 2
+     or assertion_row.assertion_kind not in (
+       'entity_kind',
+       'name',
+       'alias',
+       'traditional_classification',
+       'origin_region',
+       'era',
+       'sample_reference',
+       'lineage',
+       'genetic_relation',
+       'product_cultivar',
+       'product_market',
+       'measurement'
+     ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Knowledge review requires a version-2 graph assertion';
+  end if;
 
   if p_decision is null
      or p_decision not in ('accepted', 'rejected')
@@ -1293,6 +1323,18 @@ begin
           errcode = '22023',
           message = 'Canonical entity kind does not match the assertion';
       end if;
+    end if;
+
+    if assertion_row.assertion_kind in ('measurement', 'product_market')
+       and entity_kind <> 'product' then
+      raise exception using
+        errcode = '22023',
+        message = 'Product evidence requires a product entity';
+    elsif assertion_row.assertion_kind = 'sample_reference'
+          and entity_kind <> 'genetic_sample' then
+      raise exception using
+        errcode = '22023',
+        message = 'Sample references require a genetic sample entity';
     end if;
 
     if assertion_row.assertion_kind = 'lineage' then

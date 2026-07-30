@@ -47,9 +47,47 @@ insert into catalog.sources(
     'blocked'
   );
 
+insert into catalog.import_runs(
+  id,
+  source_id,
+  started_at,
+  completed_at,
+  cursor,
+  adapter_errors,
+  contract_version
+) values
+  (
+    '63000000-0000-4000-8000-000000000001',
+    'synthetic-graph-review-source',
+    '2026-07-30T11:59:00Z',
+    '2026-07-30T12:00:00Z',
+    null,
+    '[]',
+    2
+  ),
+  (
+    '63000000-0000-4000-8000-000000000002',
+    'synthetic-blocked-review-source',
+    '2026-07-30T11:59:00Z',
+    '2026-07-30T12:00:00Z',
+    null,
+    '[]',
+    2
+  ),
+  (
+    '63000000-0000-4000-8000-000000000003',
+    'synthetic-graph-review-source',
+    '2026-07-30T11:58:00Z',
+    '2026-07-30T11:59:00Z',
+    null,
+    '[]',
+    1
+  );
+
 insert into catalog.source_records(
   id,
   source_id,
+  import_run_id,
   external_record_key,
   upstream_state,
   retrieved_at,
@@ -68,6 +106,7 @@ insert into catalog.source_records(
   (
     '64000000-0000-4000-8000-000000000001',
     'synthetic-graph-review-source',
+    '63000000-0000-4000-8000-000000000001',
     'synthetic-graph-review-record',
     'present',
     '2026-07-30T12:00:00Z',
@@ -86,6 +125,7 @@ insert into catalog.source_records(
   (
     '64000000-0000-4000-8000-000000000002',
     'synthetic-blocked-review-source',
+    '63000000-0000-4000-8000-000000000002',
     'synthetic-blocked-review-record',
     'present',
     '2026-07-30T12:00:00Z',
@@ -100,6 +140,25 @@ insert into catalog.source_records(
     'approved',
     false,
     'Synthetic blocked review attribution'
+  ),
+  (
+    '64000000-0000-4000-8000-000000000003',
+    'synthetic-graph-review-source',
+    '63000000-0000-4000-8000-000000000003',
+    'synthetic-legacy-review-record',
+    'present',
+    '2026-07-30T11:59:00Z',
+    'legacy-fixture-1',
+    'checksum',
+    null,
+    null,
+    'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    'https://example.invalid/legacy-review-record',
+    null,
+    null,
+    'approved',
+    false,
+    'Synthetic legacy review attribution'
   );
 
 insert into catalog.entities(id, kind, canonical_name, published) values
@@ -347,6 +406,69 @@ insert into catalog.normalized_assertions(
       "subjectExternalKey":"synthetic-blocked-entity-kind",
       "entityKind":"cultivar"
     }'
+  ),
+  (
+    '66000000-0000-4000-8000-000000000014',
+    '64000000-0000-4000-8000-000000000001',
+    12,
+    'measurement',
+    'synthetic-product-measurement',
+    '{
+      "kind":"measurement",
+      "trace":{"sourceLocator":"$.product.measurement","extractionMethod":"structured"},
+      "subjectExternalKey":"synthetic-product-measurement",
+      "analyte":"thc",
+      "value":18.5,
+      "unit":"percent",
+      "productForm":"flower",
+      "batchIdentifier":"SYNTHETIC-REVIEW-BATCH",
+      "measuredAt":"2026-07-30T10:00:00Z"
+    }'
+  ),
+  (
+    '66000000-0000-4000-8000-000000000015',
+    '64000000-0000-4000-8000-000000000001',
+    13,
+    'product_market',
+    'synthetic-product-market',
+    '{
+      "kind":"product_market",
+      "trace":{"sourceLocator":"$.product.market","extractionMethod":"structured"},
+      "subjectExternalKey":"synthetic-product-market",
+      "countryCode":"DE",
+      "medical":true
+    }'
+  ),
+  (
+    '66000000-0000-4000-8000-000000000016',
+    '64000000-0000-4000-8000-000000000001',
+    14,
+    'sample_reference',
+    'synthetic-sample-reference',
+    '{
+      "kind":"sample_reference",
+      "trace":{"sourceLocator":"$.sample.reference","extractionMethod":"structured"},
+      "subjectExternalKey":"synthetic-sample-reference",
+      "sampleIdentifier":"SYNTHETIC-SAMPLE-REFERENCE",
+      "datasetName":"Synthetic dataset",
+      "datasetVersion":"v1",
+      "submitter":"Synthetic submitter",
+      "laboratory":"Synthetic laboratory",
+      "sampledAt":"2026-07-30T10:00:00Z"
+    }'
+  ),
+  (
+    '66000000-0000-4000-8000-000000000017',
+    '64000000-0000-4000-8000-000000000003',
+    0,
+    'name',
+    'synthetic-legacy-name',
+    '{
+      "kind":"name",
+      "subjectExternalKey":"synthetic-legacy-name",
+      "name":"Synthetic legacy name",
+      "language":"en"
+    }'
   );
 
 select throws_ok(
@@ -509,6 +631,133 @@ select lives_ok(
       'synthetic name acceptance'
     )$$,
   'a non-relation claim maps only its canonical subject'
+);
+
+select throws_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000014',
+      'accepted',
+      '65000000-0000-4000-8000-000000000003',
+      null,
+      'single_source',
+      'invalid measurement subject'
+    )$$,
+  '22023',
+  null,
+  'measurement rejects a cultivar subject'
+);
+
+select lives_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000014',
+      'accepted',
+      '65000000-0000-4000-8000-000000000007',
+      null,
+      'single_source',
+      'synthetic product measurement'
+    )$$,
+  'measurement accepts a product subject'
+);
+
+select throws_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000015',
+      'accepted',
+      '65000000-0000-4000-8000-000000000003',
+      null,
+      'single_source',
+      'invalid product-market subject'
+    )$$,
+  '22023',
+  null,
+  'product-market rejects a cultivar subject'
+);
+
+select lives_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000015',
+      'accepted',
+      '65000000-0000-4000-8000-000000000007',
+      null,
+      'single_source',
+      'synthetic product market'
+    )$$,
+  'product-market accepts a product subject'
+);
+
+select throws_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000016',
+      'accepted',
+      '65000000-0000-4000-8000-000000000003',
+      null,
+      'single_source',
+      'invalid sample-reference subject'
+    )$$,
+  '22023',
+  null,
+  'sample-reference rejects a cultivar subject'
+);
+
+select lives_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000016',
+      'accepted',
+      '65000000-0000-4000-8000-000000000005',
+      null,
+      'single_source',
+      'synthetic genetic sample reference'
+    )$$,
+  'sample-reference accepts a genetic-sample subject'
+);
+
+select throws_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000017',
+      'accepted',
+      '65000000-0000-4000-8000-000000000003',
+      null,
+      'confirmed',
+      'invalid graph review of legacy assertion'
+    )$$,
+  '22023',
+  null,
+  'the graph reviewer rejects an accepted version-1 assertion'
+);
+
+select throws_ok(
+  $$select private.review_knowledge_assertion(
+      '66000000-0000-4000-8000-000000000017',
+      'rejected',
+      null,
+      null,
+      null,
+      'invalid graph rejection of legacy assertion'
+    )$$,
+  '22023',
+  null,
+  'the graph reviewer rejects a rejected version-1 assertion'
+);
+
+select lives_ok(
+  $$select private.review_source_assertion(
+      '66000000-0000-4000-8000-000000000017',
+      'accepted',
+      '65000000-0000-4000-8000-000000000003',
+      null,
+      'legacy catalog acceptance'
+    )$$,
+  'the legacy reviewer still accepts a version-1 catalog assertion'
+);
+
+select is(
+  (
+    select evidence_status
+    from catalog.assertion_reviews
+    where assertion_id = '66000000-0000-4000-8000-000000000017'
+  ),
+  'single_source',
+  'the legacy reviewer keeps version-1 acceptance at single-source evidence'
 );
 
 select lives_ok(
