@@ -1602,3 +1602,935 @@ revoke all on
   catalog.knowledge_snapshot_claims,
   catalog.knowledge_snapshot_edges
   from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+
+create table api.published_knowledge_snapshot (
+  singleton boolean primary key default true check (singleton),
+  snapshot_id uuid not null unique,
+  published_at timestamptz not null
+);
+
+create table api.published_knowledge_nodes (
+  snapshot_id uuid not null,
+  id uuid primary key,
+  kind text not null check (
+    kind in ('origin_population', 'cultivar', 'genetic_sample', 'product')
+  ),
+  canonical_name text not null
+    check (char_length(canonical_name) between 1 and 160)
+);
+
+create table api.published_knowledge_claims (
+  snapshot_id uuid not null,
+  assertion_id uuid primary key,
+  node_id uuid not null
+    references api.published_knowledge_nodes(id) on delete cascade,
+  claim_kind text not null check (
+    claim_kind in (
+      'entity_kind',
+      'name',
+      'alias',
+      'traditional_classification',
+      'origin_region',
+      'era',
+      'sample_reference',
+      'product_market',
+      'measurement'
+    )
+  ),
+  value jsonb not null,
+  evidence_status text not null check (
+    evidence_status in (
+      'confirmed',
+      'single_source',
+      'disputed',
+      'historical',
+      'unknown',
+      'retracted'
+    )
+  ),
+  evidence jsonb not null check (jsonb_typeof(evidence) = 'object')
+);
+
+create table api.published_knowledge_edges (
+  snapshot_id uuid not null,
+  assertion_id uuid primary key,
+  from_node_id uuid not null
+    references api.published_knowledge_nodes(id) on delete cascade,
+  to_node_id uuid
+    references api.published_knowledge_nodes(id) on delete cascade,
+  layer text not null check (
+    layer in ('documented_lineage', 'genetic_similarity', 'product_mapping')
+  ),
+  relationship text not null check (
+    relationship in (
+      'reported_parent',
+      'cross',
+      'backcross',
+      'selection_from',
+      'historical_origin',
+      'population_membership',
+      'unknown_parent',
+      'genetic_similarity',
+      'sample_match',
+      'product_cultivar'
+    )
+  ),
+  position smallint check (position in (1, 2)),
+  evidence_status text not null check (
+    evidence_status in (
+      'confirmed',
+      'single_source',
+      'disputed',
+      'historical',
+      'unknown',
+      'retracted'
+    )
+  ),
+  details jsonb not null check (jsonb_typeof(details) = 'object'),
+  evidence jsonb not null check (jsonb_typeof(evidence) = 'object')
+);
+
+create function private.publish_reviewed_knowledge_graph()
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  accepted_assertions jsonb;
+  snapshot_identifier uuid := extensions.gen_random_uuid();
+  previous_snapshot_identifier uuid;
+  publication_time timestamptz := pg_catalog.now();
+begin
+  perform pg_catalog.pg_advisory_xact_lock(20773691, 2);
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'assertionId', assertion.id,
+        'assertionKind', assertion.assertion_kind,
+        'payload', assertion.payload,
+        'entityId', review.entity_id,
+        'relatedEntityId', review.related_entity_id,
+        'entityKind', entity.kind,
+        'relatedEntityKind', related_entity.kind,
+        'evidenceStatus', review.evidence_status,
+        'sourceName', source.display_name,
+        'sourceVersion', source_record.source_version,
+        'retrievedAt', source_record.retrieved_at,
+        'retrievalReference', source_record.retrieval_reference,
+        'attribution', source_record.attribution_snapshot
+      )
+      order by assertion.id
+    ),
+    '[]'::jsonb
+  )
+  into accepted_assertions
+  from catalog.normalized_assertions as assertion
+  join catalog.assertion_reviews as review
+    on review.assertion_id = assertion.id
+   and review.decision = 'accepted'
+   and review.evidence_status in (
+     'confirmed',
+     'single_source',
+     'disputed',
+     'historical',
+     'unknown',
+     'retracted'
+   )
+  join catalog.source_records as source_record
+    on source_record.id = assertion.source_record_id
+   and source_record.upstream_state = 'present'
+   and source_record.license_status_snapshot = 'approved'
+  join catalog.import_runs as import_run
+    on import_run.id = source_record.import_run_id
+   and import_run.source_id = source_record.source_id
+   and import_run.contract_version = 2
+  join catalog.sources as source
+    on source.id = source_record.source_id
+   and source.license_status = 'approved'
+   and source.status <> 'blocked'
+  join catalog.entities as entity
+    on entity.id = review.entity_id
+  left join catalog.entities as related_entity
+    on related_entity.id = review.related_entity_id
+  where private.source_assertion_trace_valid(assertion.payload -> 'trace')
+    and exists (
+      select 1
+      from catalog.normalized_assertions as kind_assertion
+      join catalog.assertion_reviews as kind_review
+        on kind_review.assertion_id = kind_assertion.id
+       and kind_review.decision = 'accepted'
+       and kind_review.entity_id = review.entity_id
+      join catalog.source_records as kind_source_record
+        on kind_source_record.id = kind_assertion.source_record_id
+       and kind_source_record.upstream_state = 'present'
+       and kind_source_record.license_status_snapshot = 'approved'
+      join catalog.import_runs as kind_import_run
+        on kind_import_run.id = kind_source_record.import_run_id
+       and kind_import_run.source_id = kind_source_record.source_id
+       and kind_import_run.contract_version = 2
+      join catalog.sources as kind_source
+        on kind_source.id = kind_source_record.source_id
+       and kind_source.license_status = 'approved'
+       and kind_source.status <> 'blocked'
+      where kind_assertion.assertion_kind = 'entity_kind'
+        and kind_assertion.payload ->> 'entityKind' = entity.kind
+        and private.source_assertion_trace_valid(
+          kind_assertion.payload -> 'trace'
+        )
+        and (
+          kind_source_record.valid_from is null
+          or kind_source_record.valid_from <= publication_time
+        )
+        and (
+          kind_source_record.valid_to is null
+          or kind_source_record.valid_to > publication_time
+        )
+        and (
+          kind_assertion.valid_from is null
+          or kind_assertion.valid_from <= publication_time
+        )
+        and (
+          kind_assertion.valid_to is null
+          or kind_assertion.valid_to > publication_time
+        )
+    )
+    and (
+      review.related_entity_id is null
+      or exists (
+        select 1
+        from catalog.normalized_assertions as related_kind_assertion
+        join catalog.assertion_reviews as related_kind_review
+          on related_kind_review.assertion_id = related_kind_assertion.id
+         and related_kind_review.decision = 'accepted'
+         and related_kind_review.entity_id = review.related_entity_id
+        join catalog.source_records as related_kind_source_record
+          on related_kind_source_record.id =
+            related_kind_assertion.source_record_id
+         and related_kind_source_record.upstream_state = 'present'
+         and related_kind_source_record.license_status_snapshot = 'approved'
+        join catalog.import_runs as related_kind_import_run
+          on related_kind_import_run.id =
+            related_kind_source_record.import_run_id
+         and related_kind_import_run.source_id =
+            related_kind_source_record.source_id
+         and related_kind_import_run.contract_version = 2
+        join catalog.sources as related_kind_source
+          on related_kind_source.id = related_kind_source_record.source_id
+         and related_kind_source.license_status = 'approved'
+         and related_kind_source.status <> 'blocked'
+        where related_kind_assertion.assertion_kind = 'entity_kind'
+          and related_kind_assertion.payload ->> 'entityKind'
+            = related_entity.kind
+          and private.source_assertion_trace_valid(
+            related_kind_assertion.payload -> 'trace'
+          )
+          and (
+            related_kind_source_record.valid_from is null
+            or related_kind_source_record.valid_from <= publication_time
+          )
+          and (
+            related_kind_source_record.valid_to is null
+            or related_kind_source_record.valid_to > publication_time
+          )
+          and (
+            related_kind_assertion.valid_from is null
+            or related_kind_assertion.valid_from <= publication_time
+          )
+          and (
+            related_kind_assertion.valid_to is null
+            or related_kind_assertion.valid_to > publication_time
+          )
+      )
+    )
+    and (
+      source_record.valid_from is null
+      or source_record.valid_from <= publication_time
+    )
+    and (
+      source_record.valid_to is null
+      or source_record.valid_to > publication_time
+    )
+    and (
+      assertion.valid_from is null
+      or assertion.valid_from <= publication_time
+    )
+    and (
+      assertion.valid_to is null
+      or assertion.valid_to > publication_time
+    );
+
+  if exists (
+    with accepted as (
+      select assertion.value
+      from jsonb_array_elements(accepted_assertions) as assertion(value)
+    ),
+    endpoints as (
+      select value ->> 'entityId' as entity_id
+      from accepted
+      union
+      select value ->> 'relatedEntityId'
+      from accepted
+      where value -> 'relatedEntityId' <> 'null'::jsonb
+    ),
+    node_assertions as (
+      select
+        value ->> 'entityId' as entity_id,
+        count(*) filter (
+          where value ->> 'assertionKind' = 'entity_kind'
+        ) as kind_count,
+        count(*) filter (
+          where value ->> 'assertionKind' = 'name'
+        ) as name_count,
+        count(distinct value #>> '{payload,entityKind}') filter (
+          where value ->> 'assertionKind' = 'entity_kind'
+        ) as distinct_kind_count,
+        count(distinct value #>> '{payload,name}') filter (
+          where value ->> 'assertionKind' = 'name'
+        ) as distinct_name_count
+      from accepted
+      group by value ->> 'entityId'
+    )
+    select 1
+    from endpoints
+    left join node_assertions
+      on node_assertions.entity_id = endpoints.entity_id
+    where node_assertions.kind_count is distinct from 1
+      or node_assertions.name_count is distinct from 1
+      or node_assertions.distinct_kind_count is distinct from 1
+      or node_assertions.distinct_name_count is distinct from 1
+  )
+  or exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where (
+      accepted.value ->> 'assertionKind' = 'entity_kind'
+      and (
+        accepted.value #>> '{payload,entityKind}'
+          <> accepted.value ->> 'entityKind'
+        or accepted.value ->> 'entityKind' not in (
+          'origin_population',
+          'cultivar',
+          'genetic_sample',
+          'product'
+        )
+      )
+    )
+    or (
+      accepted.value ->> 'assertionKind' = 'name'
+      and char_length(accepted.value #>> '{payload,name}')
+        not between 1 and 160
+    )
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid knowledge graph snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where accepted.value ->> 'assertionKind' not in (
+      'entity_kind',
+      'name',
+      'alias',
+      'traditional_classification',
+      'origin_region',
+      'era',
+      'sample_reference',
+      'lineage',
+      'genetic_relation',
+      'product_cultivar',
+      'product_market',
+      'measurement'
+    )
+    or (
+      accepted.value ->> 'assertionKind' in (
+        'entity_kind',
+        'name',
+        'alias',
+        'traditional_classification',
+        'origin_region',
+        'era',
+        'sample_reference',
+        'product_market',
+        'measurement'
+      )
+      and accepted.value -> 'relatedEntityId' <> 'null'::jsonb
+    )
+    or (
+      accepted.value ->> 'assertionKind' in (
+        'measurement',
+        'product_market'
+      )
+      and accepted.value ->> 'entityKind' <> 'product'
+    )
+    or (
+      accepted.value ->> 'assertionKind' = 'sample_reference'
+      and accepted.value ->> 'entityKind' <> 'genetic_sample'
+    )
+    or (
+      accepted.value -> 'relatedEntityId' <> 'null'::jsonb
+      and accepted.value ->> 'entityId'
+        = accepted.value ->> 'relatedEntityId'
+    )
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid knowledge graph snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where accepted.value ->> 'assertionKind' = 'lineage'
+      and not coalesce((
+        (
+          accepted.value #>> '{payload,relationship}' in (
+            'reported_parent',
+            'cross',
+            'backcross'
+          )
+          and accepted.value ->> 'entityKind' = 'cultivar'
+          and accepted.value ->> 'relatedEntityKind' = 'cultivar'
+        )
+        or
+        (
+          accepted.value #>> '{payload,relationship}' = 'selection_from'
+          and accepted.value ->> 'entityKind' = 'cultivar'
+          and accepted.value ->> 'relatedEntityKind'
+            in ('cultivar', 'origin_population')
+        )
+        or
+        (
+          accepted.value #>> '{payload,relationship}'
+            = 'historical_origin'
+          and accepted.value ->> 'entityKind'
+            in ('cultivar', 'origin_population')
+          and accepted.value ->> 'relatedEntityKind'
+            = 'origin_population'
+        )
+        or
+        (
+          accepted.value #>> '{payload,relationship}'
+            = 'population_membership'
+          and accepted.value ->> 'entityKind'
+            in ('cultivar', 'genetic_sample')
+          and accepted.value ->> 'relatedEntityKind'
+            = 'origin_population'
+        )
+        or
+        (
+          accepted.value #>> '{payload,relationship}' = 'unknown_parent'
+          and accepted.value ->> 'entityKind' = 'cultivar'
+          and accepted.value -> 'relatedEntityId' = 'null'::jsonb
+        )
+      ), false)
+  )
+  or exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where accepted.value ->> 'assertionKind' = 'genetic_relation'
+      and (
+        accepted.value ->> 'entityKind' <> 'genetic_sample'
+        or accepted.value ->> 'relatedEntityKind' <> 'genetic_sample'
+        or accepted.value -> 'relatedEntityId' = 'null'::jsonb
+      )
+  )
+  or exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where accepted.value ->> 'assertionKind' = 'product_cultivar'
+      and (
+        accepted.value ->> 'entityKind' <> 'product'
+        or accepted.value ->> 'relatedEntityKind' <> 'cultivar'
+        or accepted.value -> 'relatedEntityId' = 'null'::jsonb
+      )
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid knowledge graph snapshot';
+  end if;
+
+  select current_snapshot.snapshot_id
+  into previous_snapshot_identifier
+  from catalog.knowledge_current_snapshot as current_snapshot
+  where current_snapshot.singleton;
+
+  insert into catalog.knowledge_publication_snapshots(
+    id,
+    previous_snapshot_id,
+    published_by,
+    published_at,
+    assertion_count
+  ) values (
+    snapshot_identifier,
+    previous_snapshot_identifier,
+    session_user::text,
+    publication_time,
+    jsonb_array_length(accepted_assertions)
+  );
+
+  insert into catalog.knowledge_snapshot_nodes(
+    snapshot_id,
+    entity_id,
+    kind,
+    canonical_name
+  )
+  with accepted as (
+    select assertion.value
+    from jsonb_array_elements(accepted_assertions) as assertion(value)
+  ),
+  kinds as (
+    select
+      value ->> 'entityId' as entity_id,
+      value #>> '{payload,entityKind}' as kind
+    from accepted
+    where value ->> 'assertionKind' = 'entity_kind'
+  ),
+  names as (
+    select
+      value ->> 'entityId' as entity_id,
+      value #>> '{payload,name}' as canonical_name
+    from accepted
+    where value ->> 'assertionKind' = 'name'
+  )
+  select
+    snapshot_identifier,
+    kinds.entity_id::uuid,
+    kinds.kind,
+    names.canonical_name
+  from kinds
+  join names on names.entity_id = kinds.entity_id;
+
+  insert into catalog.knowledge_snapshot_claims(
+    snapshot_id,
+    assertion_id,
+    entity_id,
+    claim_kind,
+    value,
+    evidence_status,
+    evidence
+  )
+  select
+    snapshot_identifier,
+    (accepted.value ->> 'assertionId')::uuid,
+    (accepted.value ->> 'entityId')::uuid,
+    accepted.value ->> 'assertionKind',
+    case accepted.value ->> 'assertionKind'
+      when 'entity_kind' then jsonb_build_object(
+        'entityKind',
+        accepted.value #>> '{payload,entityKind}'
+      )
+      when 'name' then jsonb_build_object(
+        'name',
+        accepted.value #>> '{payload,name}',
+        'language',
+        accepted.value #> '{payload,language}'
+      )
+      when 'alias' then jsonb_build_object(
+        'name',
+        accepted.value #>> '{payload,name}',
+        'language',
+        accepted.value #> '{payload,language}',
+        'aliasType',
+        accepted.value #>> '{payload,aliasType}',
+        'market',
+        accepted.value #> '{payload,market}'
+      )
+      when 'traditional_classification' then jsonb_build_object(
+        'classification',
+        accepted.value #>> '{payload,classification}'
+      )
+      when 'origin_region' then jsonb_build_object(
+        'regionName',
+        accepted.value #>> '{payload,regionName}',
+        'regionCode',
+        accepted.value #> '{payload,regionCode}'
+      )
+      when 'era' then jsonb_build_object(
+        'startYear',
+        accepted.value #> '{payload,startYear}',
+        'endYear',
+        accepted.value #> '{payload,endYear}',
+        'label',
+        accepted.value #> '{payload,label}'
+      )
+      when 'sample_reference' then jsonb_build_object(
+        'sampleIdentifier',
+        accepted.value #>> '{payload,sampleIdentifier}',
+        'datasetName',
+        accepted.value #>> '{payload,datasetName}',
+        'datasetVersion',
+        accepted.value #> '{payload,datasetVersion}',
+        'submitter',
+        accepted.value #> '{payload,submitter}',
+        'laboratory',
+        accepted.value #> '{payload,laboratory}',
+        'sampledAt',
+        accepted.value #> '{payload,sampledAt}'
+      )
+      when 'product_market' then jsonb_build_object(
+        'countryCode',
+        accepted.value #>> '{payload,countryCode}',
+        'medical',
+        accepted.value #> '{payload,medical}'
+      )
+      when 'measurement' then jsonb_build_object(
+        'analyte',
+        accepted.value #>> '{payload,analyte}',
+        'value',
+        accepted.value #> '{payload,value}',
+        'unit',
+        accepted.value #>> '{payload,unit}',
+        'productForm',
+        accepted.value #>> '{payload,productForm}',
+        'batchIdentifier',
+        accepted.value #> '{payload,batchIdentifier}',
+        'measuredAt',
+        accepted.value #> '{payload,measuredAt}'
+      )
+    end,
+    accepted.value ->> 'evidenceStatus',
+    jsonb_build_object(
+      'sourceName',
+      accepted.value ->> 'sourceName',
+      'sourceVersion',
+      accepted.value -> 'sourceVersion',
+      'retrievedAt',
+      accepted.value -> 'retrievedAt',
+      'citationUrl',
+      case
+        when accepted.value ->> 'retrievalReference' ~ '^https://'
+          then accepted.value -> 'retrievalReference'
+        else 'null'::jsonb
+      end,
+      'sourceLocator',
+      accepted.value #>> '{payload,trace,sourceLocator}',
+      'extractionMethod',
+      accepted.value #>> '{payload,trace,extractionMethod}',
+      'attribution',
+      accepted.value ->> 'attribution'
+    )
+  from jsonb_array_elements(accepted_assertions) as accepted(value)
+  where accepted.value ->> 'assertionKind' in (
+    'entity_kind',
+    'name',
+    'alias',
+    'traditional_classification',
+    'origin_region',
+    'era',
+    'sample_reference',
+    'product_market',
+    'measurement'
+  );
+
+  insert into catalog.knowledge_snapshot_edges(
+    snapshot_id,
+    assertion_id,
+    from_entity_id,
+    to_entity_id,
+    layer,
+    relationship,
+    position,
+    evidence_status,
+    details,
+    evidence
+  )
+  select
+    snapshot_identifier,
+    (accepted.value ->> 'assertionId')::uuid,
+    (accepted.value ->> 'entityId')::uuid,
+    nullif(accepted.value ->> 'relatedEntityId', '')::uuid,
+    case accepted.value ->> 'assertionKind'
+      when 'lineage' then 'documented_lineage'
+      when 'genetic_relation' then 'genetic_similarity'
+      when 'product_cultivar' then 'product_mapping'
+    end,
+    case accepted.value ->> 'assertionKind'
+      when 'product_cultivar' then 'product_cultivar'
+      else accepted.value #>> '{payload,relationship}'
+    end,
+    case
+      when accepted.value ->> 'assertionKind' = 'lineage'
+        then (accepted.value #>> '{payload,position}')::smallint
+      else null
+    end,
+    accepted.value ->> 'evidenceStatus',
+    case accepted.value ->> 'assertionKind'
+      when 'lineage' then '{}'::jsonb
+      when 'genetic_relation' then jsonb_build_object(
+        'method',
+        accepted.value #>> '{payload,method}',
+        'datasetName',
+        accepted.value #>> '{payload,datasetName}',
+        'datasetVersion',
+        accepted.value #> '{payload,datasetVersion}',
+        'metricName',
+        accepted.value #>> '{payload,metricName}',
+        'value',
+        accepted.value #> '{payload,value}',
+        'unit',
+        accepted.value #> '{payload,unit}'
+      )
+      when 'product_cultivar' then jsonb_build_object(
+        'productForm',
+        accepted.value #>> '{payload,productForm}'
+      )
+    end,
+    jsonb_build_object(
+      'sourceName',
+      accepted.value ->> 'sourceName',
+      'sourceVersion',
+      accepted.value -> 'sourceVersion',
+      'retrievedAt',
+      accepted.value -> 'retrievedAt',
+      'citationUrl',
+      case
+        when accepted.value ->> 'retrievalReference' ~ '^https://'
+          then accepted.value -> 'retrievalReference'
+        else 'null'::jsonb
+      end,
+      'sourceLocator',
+      accepted.value #>> '{payload,trace,sourceLocator}',
+      'extractionMethod',
+      accepted.value #>> '{payload,trace,extractionMethod}',
+      'attribution',
+      accepted.value ->> 'attribution'
+    )
+  from jsonb_array_elements(accepted_assertions) as accepted(value)
+  where accepted.value ->> 'assertionKind' in (
+    'lineage',
+    'genetic_relation',
+    'product_cultivar'
+  );
+
+  insert into catalog.knowledge_current_snapshot(singleton, snapshot_id)
+  values (true, snapshot_identifier)
+  on conflict (singleton) do update
+  set snapshot_id = excluded.snapshot_id;
+
+  delete from api.published_knowledge_edges;
+  delete from api.published_knowledge_claims;
+  delete from api.published_knowledge_nodes;
+  delete from api.published_knowledge_snapshot;
+
+  insert into api.published_knowledge_snapshot(
+    singleton,
+    snapshot_id,
+    published_at
+  ) values (
+    true,
+    snapshot_identifier,
+    publication_time
+  );
+
+  insert into api.published_knowledge_nodes(
+    snapshot_id,
+    id,
+    kind,
+    canonical_name
+  )
+  select
+    snapshot.snapshot_id,
+    snapshot.entity_id,
+    snapshot.kind,
+    snapshot.canonical_name
+  from catalog.knowledge_snapshot_nodes as snapshot
+  where snapshot.snapshot_id = snapshot_identifier;
+
+  insert into api.published_knowledge_claims(
+    snapshot_id,
+    assertion_id,
+    node_id,
+    claim_kind,
+    value,
+    evidence_status,
+    evidence
+  )
+  select
+    snapshot.snapshot_id,
+    snapshot.assertion_id,
+    snapshot.entity_id,
+    snapshot.claim_kind,
+    snapshot.value,
+    snapshot.evidence_status,
+    snapshot.evidence
+  from catalog.knowledge_snapshot_claims as snapshot
+  where snapshot.snapshot_id = snapshot_identifier;
+
+  insert into api.published_knowledge_edges(
+    snapshot_id,
+    assertion_id,
+    from_node_id,
+    to_node_id,
+    layer,
+    relationship,
+    position,
+    evidence_status,
+    details,
+    evidence
+  )
+  select
+    snapshot.snapshot_id,
+    snapshot.assertion_id,
+    snapshot.from_entity_id,
+    snapshot.to_entity_id,
+    snapshot.layer,
+    snapshot.relationship,
+    snapshot.position,
+    snapshot.evidence_status,
+    snapshot.details,
+    snapshot.evidence
+  from catalog.knowledge_snapshot_edges as snapshot
+  where snapshot.snapshot_id = snapshot_identifier;
+
+  return snapshot_identifier;
+end;
+$$;
+
+revoke all on function private.publish_reviewed_knowledge_graph()
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+grant execute on function private.publish_reviewed_knowledge_graph()
+  to source_reviewer;
+
+create function api.get_published_knowledge_graph()
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'snapshotId',
+    snapshot.snapshot_id,
+    'publishedAt',
+    snapshot.published_at,
+    'nodes',
+    (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'id',
+            node.id,
+            'kind',
+            node.kind,
+            'canonicalName',
+            node.canonical_name
+          )
+          order by node.id
+        ),
+        '[]'::jsonb
+      )
+      from api.published_knowledge_nodes as node
+      where node.snapshot_id = snapshot.snapshot_id
+    ),
+    'claims',
+    (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'assertionId',
+            claim.assertion_id,
+            'nodeId',
+            claim.node_id,
+            'kind',
+            claim.claim_kind,
+            'value',
+            claim.value,
+            'evidenceStatus',
+            claim.evidence_status,
+            'evidence',
+            claim.evidence
+          )
+          order by claim.assertion_id
+        ),
+        '[]'::jsonb
+      )
+      from api.published_knowledge_claims as claim
+      where claim.snapshot_id = snapshot.snapshot_id
+    ),
+    'edges',
+    (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'assertionId',
+            edge.assertion_id,
+            'fromNodeId',
+            edge.from_node_id,
+            'toNodeId',
+            edge.to_node_id,
+            'layer',
+            edge.layer,
+            'relationship',
+            edge.relationship,
+            'position',
+            edge.position,
+            'evidenceStatus',
+            edge.evidence_status,
+            'details',
+            edge.details,
+            'evidence',
+            edge.evidence
+          )
+          order by edge.assertion_id
+        ),
+        '[]'::jsonb
+      )
+      from api.published_knowledge_edges as edge
+      where edge.snapshot_id = snapshot.snapshot_id
+    )
+  )
+  from api.published_knowledge_snapshot as snapshot
+  where snapshot.singleton;
+$$;
+
+revoke all on function api.get_published_knowledge_graph()
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+grant execute on function api.get_published_knowledge_graph()
+  to authenticated;
+
+alter table api.published_knowledge_snapshot enable row level security;
+alter table api.published_knowledge_nodes enable row level security;
+alter table api.published_knowledge_claims enable row level security;
+alter table api.published_knowledge_edges enable row level security;
+
+create policy published_knowledge_snapshot_select_authenticated
+  on api.published_knowledge_snapshot
+  for select
+  to authenticated
+  using (true);
+
+create policy published_knowledge_nodes_select_authenticated
+  on api.published_knowledge_nodes
+  for select
+  to authenticated
+  using (true);
+
+create policy published_knowledge_claims_select_authenticated
+  on api.published_knowledge_claims
+  for select
+  to authenticated
+  using (true);
+
+create policy published_knowledge_edges_select_authenticated
+  on api.published_knowledge_edges
+  for select
+  to authenticated
+  using (true);
+
+revoke all on
+  api.published_knowledge_snapshot,
+  api.published_knowledge_nodes,
+  api.published_knowledge_claims,
+  api.published_knowledge_edges
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+
+grant select on
+  api.published_knowledge_snapshot,
+  api.published_knowledge_nodes,
+  api.published_knowledge_claims,
+  api.published_knowledge_edges
+  to authenticated;

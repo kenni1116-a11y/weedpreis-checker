@@ -1188,5 +1188,1453 @@ select ok(
   'the upsert keeps the latest valid canonical mapping and evidence state'
 );
 
+select has_table(
+  'api',
+  'published_knowledge_snapshot',
+  'the authenticated projection has one current knowledge snapshot'
+);
+select has_table(
+  'api',
+  'published_knowledge_nodes',
+  'the authenticated projection has current knowledge nodes'
+);
+select has_table(
+  'api',
+  'published_knowledge_claims',
+  'the authenticated projection has current knowledge claims'
+);
+select has_table(
+  'api',
+  'published_knowledge_edges',
+  'the authenticated projection has current knowledge edges'
+);
+select has_function(
+  'private',
+  'publish_reviewed_knowledge_graph',
+  array[]::text[],
+  'the reviewer has an atomic knowledge publication capability'
+);
+select has_function(
+  'api',
+  'get_published_knowledge_graph',
+  array[]::text[],
+  'authenticated clients have one atomic graph read capability'
+);
+
+select ok(
+  (
+    select
+      function.prosecdef
+      and array_to_string(function.proconfig, ',') like '%search_path=""%'
+    from pg_catalog.pg_proc as function
+    where function.oid =
+      'private.publish_reviewed_knowledge_graph()'::regprocedure
+  ),
+  'the graph publisher is security definer with an empty search path'
+);
+select ok(
+  (
+    select
+      not function.prosecdef
+      and function.provolatile = 's'
+      and language.lanname = 'sql'
+      and array_to_string(function.proconfig, ',') like '%search_path=""%'
+    from pg_catalog.pg_proc as function
+    join pg_catalog.pg_language as language
+      on language.oid = function.prolang
+    where function.oid =
+      'api.get_published_knowledge_graph()'::regprocedure
+  ),
+  'the graph read capability is stable SQL security invoker with an empty search path'
+);
+
+select ok(
+  has_function_privilege(
+    'source_reviewer',
+    'private.publish_reviewed_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'source_ingestor',
+    'private.publish_reviewed_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'anon',
+    'private.publish_reviewed_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'private.publish_reviewed_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'private.publish_reviewed_knowledge_graph()',
+    'execute'
+  ),
+  'only the source reviewer can execute the graph publisher'
+);
+
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'api.get_published_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'anon',
+    'api.get_published_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'api.get_published_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'source_ingestor',
+    'api.get_published_knowledge_graph()',
+    'execute'
+  )
+  and not has_function_privilege(
+    'source_reviewer',
+    'api.get_published_knowledge_graph()',
+    'execute'
+  ),
+  'only authenticated clients can execute the atomic graph read'
+);
+
+select ok(
+  (
+    select count(*) = 4 and bool_and(relation.relrowsecurity)
+    from pg_catalog.pg_class as relation
+    join pg_catalog.pg_namespace as namespace
+      on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'api'
+      and relation.relname in (
+        'published_knowledge_snapshot',
+        'published_knowledge_nodes',
+        'published_knowledge_claims',
+        'published_knowledge_edges'
+      )
+  ),
+  'all four graph projection tables have row-level security enabled'
+);
+
+select ok(
+  not exists (
+    select 1
+    from unnest(
+      array[
+        'api.published_knowledge_snapshot',
+        'api.published_knowledge_nodes',
+        'api.published_knowledge_claims',
+        'api.published_knowledge_edges'
+      ]
+    ) as relation_name(name)
+    cross join unnest(
+      array[
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'TRUNCATE',
+        'REFERENCES',
+        'TRIGGER'
+      ]
+    ) as privilege_name(name)
+    where has_table_privilege(
+      'authenticated',
+      relation_name.name,
+      privilege_name.name
+    )
+  )
+  and not exists (
+    select 1
+    from unnest(
+      array['anon', 'service_role', 'source_ingestor', 'source_reviewer']
+    ) as role_name(name)
+    cross join unnest(
+      array[
+        'api.published_knowledge_snapshot',
+        'api.published_knowledge_nodes',
+        'api.published_knowledge_claims',
+        'api.published_knowledge_edges'
+      ]
+    ) as relation_name(name)
+    cross join unnest(
+      array[
+        'SELECT',
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'TRUNCATE',
+        'REFERENCES',
+        'TRIGGER'
+      ]
+    ) as privilege_name(name)
+    where has_table_privilege(
+      role_name.name,
+      relation_name.name,
+      privilege_name.name
+    )
+  )
+  and (
+    select bool_and(
+      has_table_privilege(
+        'authenticated',
+        relation_name.name,
+        'SELECT'
+      )
+    )
+    from unnest(
+      array[
+        'api.published_knowledge_snapshot',
+        'api.published_knowledge_nodes',
+        'api.published_knowledge_claims',
+        'api.published_knowledge_edges'
+      ]
+    ) as relation_name(name)
+  ),
+  'the graph projection grants authenticated read-only access and no broad-role access'
+);
+
+select ok(
+  not has_schema_privilege('authenticated', 'catalog', 'usage')
+  and not has_schema_privilege('authenticated', 'private', 'usage'),
+  'authenticated graph readers still cannot resolve catalog or private'
+);
+
+select is(
+  api.get_published_knowledge_graph(),
+  null::jsonb,
+  'the atomic graph read is empty-safe before the first publication'
+);
+
+set local role authenticated;
+select api.get_published_knowledge_graph() is null
+  as graph_before_publication_is_null
+\gset
+reset role;
+
+select ok(
+  :'graph_before_publication_is_null'::boolean,
+  'an authenticated client receives null before the first publication'
+);
+
+insert into catalog.sources(
+  id,
+  display_name,
+  owner_name,
+  access_method,
+  permitted_frequency,
+  license_status,
+  license_reference,
+  raw_storage_allowed,
+  attribution_rules,
+  image_rights_status,
+  confidence_class,
+  responsible_reviewer,
+  status
+) values
+  (
+    'synthetic-publication-source',
+    'Synthetic publication source',
+    'Synthetic owner',
+    'synthetic fixture',
+    'manual tests only',
+    'approved',
+    'https://example.invalid/publication-license',
+    false,
+    'Synthetic publication attribution',
+    'not included',
+    'supporting',
+    'publication-test-reviewer',
+    'active'
+  ),
+  (
+    'synthetic-publication-blocked-source',
+    'Synthetic publication blocked source',
+    'Synthetic owner',
+    'synthetic fixture',
+    'manual tests only',
+    'approved',
+    'https://example.invalid/publication-blocked-license',
+    false,
+    'Synthetic blocked publication attribution',
+    'not included',
+    'supporting',
+    'publication-test-reviewer',
+    'active'
+  ),
+  (
+    'synthetic-publication-forbidden-source',
+    'Synthetic publication forbidden source',
+    'Synthetic owner',
+    'synthetic fixture',
+    'manual tests only',
+    'forbidden',
+    'https://example.invalid/publication-forbidden-license',
+    false,
+    'Synthetic forbidden publication attribution',
+    'not included',
+    'supporting',
+    'publication-test-reviewer',
+    'active'
+  );
+
+insert into catalog.import_runs(
+  id,
+  source_id,
+  started_at,
+  completed_at,
+  cursor,
+  adapter_errors,
+  contract_version
+) values
+  (
+    '67000000-0000-4000-8000-000000000001',
+    'synthetic-publication-source',
+    '2026-07-30T14:59:00Z',
+    '2026-07-30T15:00:00Z',
+    null,
+    '[]',
+    2
+  ),
+  (
+    '67000000-0000-4000-8000-000000000002',
+    'synthetic-publication-blocked-source',
+    '2026-07-30T14:59:00Z',
+    '2026-07-30T15:00:00Z',
+    null,
+    '[]',
+    2
+  ),
+  (
+    '67000000-0000-4000-8000-000000000003',
+    'synthetic-publication-forbidden-source',
+    '2026-07-30T14:59:00Z',
+    '2026-07-30T15:00:00Z',
+    null,
+    '[]',
+    2
+  );
+
+insert into catalog.source_records(
+  id,
+  source_id,
+  import_run_id,
+  external_record_key,
+  upstream_state,
+  retrieved_at,
+  source_version,
+  evidence_kind,
+  raw_media_type,
+  raw_payload,
+  content_hash,
+  retrieval_reference,
+  valid_from,
+  valid_to,
+  license_status_snapshot,
+  raw_storage_allowed_snapshot,
+  attribution_snapshot
+) values
+  (
+    '67100000-0000-4000-8000-000000000001',
+    'synthetic-publication-source',
+    '67000000-0000-4000-8000-000000000001',
+    'synthetic-publication-safe-record',
+    'present',
+    '2026-07-30T15:00:00Z',
+    'publication-v1',
+    'checksum',
+    null,
+    null,
+    'd111111111111111111111111111111111111111111111111111111111111111',
+    'https://example.invalid/publication-safe-record',
+    null,
+    null,
+    'approved',
+    false,
+    'Synthetic publication attribution'
+  ),
+  (
+    '67100000-0000-4000-8000-000000000002',
+    'synthetic-publication-source',
+    '67000000-0000-4000-8000-000000000001',
+    'synthetic-publication-unsafe-citation-record',
+    'present',
+    '2026-07-30T15:01:00Z',
+    'publication-v2',
+    'checksum',
+    null,
+    null,
+    'd222222222222222222222222222222222222222222222222222222222222222',
+    'http://example.invalid/publication-unsafe-record',
+    null,
+    null,
+    'approved',
+    false,
+    'Synthetic unsafe-citation attribution'
+  ),
+  (
+    '67100000-0000-4000-8000-000000000003',
+    'synthetic-publication-source',
+    '67000000-0000-4000-8000-000000000001',
+    'synthetic-publication-deleted-record',
+    'deleted',
+    '2026-07-30T15:02:00Z',
+    'publication-deleted',
+    'checksum',
+    null,
+    null,
+    'd333333333333333333333333333333333333333333333333333333333333333',
+    'https://example.invalid/publication-deleted-record',
+    null,
+    null,
+    'approved',
+    false,
+    'Synthetic deleted publication attribution'
+  ),
+  (
+    '67100000-0000-4000-8000-000000000004',
+    'synthetic-publication-blocked-source',
+    '67000000-0000-4000-8000-000000000002',
+    'synthetic-publication-blocked-record',
+    'present',
+    '2026-07-30T15:03:00Z',
+    'publication-blocked',
+    'checksum',
+    null,
+    null,
+    'd444444444444444444444444444444444444444444444444444444444444444',
+    'https://example.invalid/publication-blocked-record',
+    null,
+    null,
+    'approved',
+    false,
+    'Synthetic blocked publication attribution'
+  ),
+  (
+    '67100000-0000-4000-8000-000000000005',
+    'synthetic-publication-forbidden-source',
+    '67000000-0000-4000-8000-000000000003',
+    'synthetic-publication-forbidden-record',
+    'present',
+    '2026-07-30T15:04:00Z',
+    'publication-forbidden',
+    'checksum',
+    null,
+    null,
+    'd555555555555555555555555555555555555555555555555555555555555555',
+    'https://example.invalid/publication-forbidden-record',
+    null,
+    null,
+    'forbidden',
+    false,
+    'Synthetic forbidden publication attribution'
+  );
+
+insert into catalog.entities(id, kind, canonical_name, published) values
+  (
+    '67200000-0000-4000-8000-000000000001',
+    'origin_population',
+    'Unpublished synthetic origin',
+    false
+  ),
+  (
+    '67200000-0000-4000-8000-000000000002',
+    'cultivar',
+    'Unpublished synthetic child',
+    false
+  ),
+  (
+    '67200000-0000-4000-8000-000000000003',
+    'genetic_sample',
+    'Unpublished synthetic sample one',
+    false
+  ),
+  (
+    '67200000-0000-4000-8000-000000000004',
+    'genetic_sample',
+    'Unpublished synthetic sample two',
+    false
+  ),
+  (
+    '67200000-0000-4000-8000-000000000005',
+    'product',
+    'Unpublished synthetic product',
+    false
+  ),
+  (
+    '67200000-0000-4000-8000-000000000006',
+    'cultivar',
+    'Unpublished synthetic parent',
+    false
+  );
+
+insert into catalog.normalized_assertions(
+  id,
+  source_record_id,
+  assertion_index,
+  assertion_kind,
+  subject_external_key,
+  payload,
+  valid_from,
+  valid_to
+) values
+  (
+    '67300000-0000-4000-8000-000000000001',
+    '67100000-0000-4000-8000-000000000001',
+    0,
+    'entity_kind',
+    'synthetic-publication-origin',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.origin.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-origin","entityKind":"origin_population"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000002',
+    '67100000-0000-4000-8000-000000000001',
+    1,
+    'name',
+    'synthetic-publication-origin',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.origin.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-origin","name":"Synthetic published origin","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000003',
+    '67100000-0000-4000-8000-000000000001',
+    2,
+    'entity_kind',
+    'synthetic-publication-child',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.child.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-child","entityKind":"cultivar"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000004',
+    '67100000-0000-4000-8000-000000000001',
+    3,
+    'name',
+    'synthetic-publication-child',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.child.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Synthetic published child","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000005',
+    '67100000-0000-4000-8000-000000000001',
+    4,
+    'entity_kind',
+    'synthetic-publication-parent',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.parent.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-parent","entityKind":"cultivar"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000006',
+    '67100000-0000-4000-8000-000000000001',
+    5,
+    'name',
+    'synthetic-publication-parent',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.parent.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-parent","name":"Synthetic published parent","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000007',
+    '67100000-0000-4000-8000-000000000001',
+    6,
+    'entity_kind',
+    'synthetic-publication-sample-one',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.sampleOne.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-sample-one","entityKind":"genetic_sample"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000008',
+    '67100000-0000-4000-8000-000000000001',
+    7,
+    'name',
+    'synthetic-publication-sample-one',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.sampleOne.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-sample-one","name":"Synthetic published sample one","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000009',
+    '67100000-0000-4000-8000-000000000001',
+    8,
+    'entity_kind',
+    'synthetic-publication-sample-two',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.sampleTwo.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-sample-two","entityKind":"genetic_sample"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000010',
+    '67100000-0000-4000-8000-000000000001',
+    9,
+    'name',
+    'synthetic-publication-sample-two',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.sampleTwo.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-sample-two","name":"Synthetic published sample two","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000011',
+    '67100000-0000-4000-8000-000000000001',
+    10,
+    'entity_kind',
+    'synthetic-publication-product',
+    '{"kind":"entity_kind","trace":{"sourceLocator":"$.nodes.product.kind","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-product","entityKind":"product"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000012',
+    '67100000-0000-4000-8000-000000000001',
+    11,
+    'name',
+    'synthetic-publication-product',
+    '{"kind":"name","trace":{"sourceLocator":"$.nodes.product.name","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-product","name":"Synthetic published product","language":"en"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000013',
+    '67100000-0000-4000-8000-000000000002',
+    0,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.claims.child.alias","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-child","name":"Synthetic child alias","language":"en","aliasType":"market","market":"DE"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000014',
+    '67100000-0000-4000-8000-000000000001',
+    12,
+    'traditional_classification',
+    'synthetic-publication-child',
+    '{"kind":"traditional_classification","trace":{"sourceLocator":"$.claims.child.classification","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","classification":"hybrid"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000015',
+    '67100000-0000-4000-8000-000000000001',
+    13,
+    'origin_region',
+    'synthetic-publication-origin',
+    '{"kind":"origin_region","trace":{"sourceLocator":"$.claims.origin.region","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-origin","regionName":"Synthetic Region","regionCode":"ZZ-SYN"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000016',
+    '67100000-0000-4000-8000-000000000001',
+    14,
+    'era',
+    'synthetic-publication-child',
+    '{"kind":"era","trace":{"sourceLocator":"$.claims.child.era","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","startYear":1990,"endYear":2000,"label":"Synthetic era"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000017',
+    '67100000-0000-4000-8000-000000000001',
+    15,
+    'sample_reference',
+    'synthetic-publication-sample-one',
+    '{"kind":"sample_reference","trace":{"sourceLocator":"$.claims.sample.reference","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-sample-one","sampleIdentifier":"SYN-PUB-SAMPLE-1","datasetName":"Synthetic publication dataset","datasetVersion":"v1","submitter":"Synthetic submitter","laboratory":"Synthetic laboratory","sampledAt":"2026-07-30T14:00:00Z"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000018',
+    '67100000-0000-4000-8000-000000000001',
+    16,
+    'product_market',
+    'synthetic-publication-product',
+    '{"kind":"product_market","trace":{"sourceLocator":"$.claims.product.market","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-product","countryCode":"DE","medical":true}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000019',
+    '67100000-0000-4000-8000-000000000001',
+    17,
+    'measurement',
+    'synthetic-publication-product',
+    '{"kind":"measurement","trace":{"sourceLocator":"$.claims.product.measurement","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-product","analyte":"thc","value":19.5,"unit":"percent","productForm":"flower","batchIdentifier":"SYN-PUB-BATCH","measuredAt":"2026-07-30T14:30:00Z"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000020',
+    '67100000-0000-4000-8000-000000000001',
+    18,
+    'lineage',
+    'synthetic-publication-child',
+    '{"kind":"lineage","trace":{"sourceLocator":"$.edges.lineage.parent","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","relatedExternalKey":"synthetic-publication-parent","relationship":"reported_parent","position":1}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000021',
+    '67100000-0000-4000-8000-000000000001',
+    19,
+    'lineage',
+    'synthetic-publication-child',
+    '{"kind":"lineage","trace":{"sourceLocator":"$.edges.lineage.unknown","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","relatedExternalKey":null,"relationship":"unknown_parent","position":2}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000022',
+    '67100000-0000-4000-8000-000000000001',
+    20,
+    'genetic_relation',
+    'synthetic-publication-sample-one',
+    '{"kind":"genetic_relation","trace":{"sourceLocator":"$.edges.genetics.similarity","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-sample-one","relatedExternalKey":"synthetic-publication-sample-two","relationship":"genetic_similarity","method":"Synthetic method","datasetName":"Synthetic publication dataset","datasetVersion":"v1","metricName":"similarity","value":0.875,"unit":"ratio"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000023',
+    '67100000-0000-4000-8000-000000000001',
+    21,
+    'product_cultivar',
+    'synthetic-publication-product',
+    '{"kind":"product_cultivar","trace":{"sourceLocator":"$.edges.product.cultivar","extractionMethod":"structured"},"subjectExternalKey":"synthetic-publication-product","cultivarExternalKey":"synthetic-publication-child","productForm":"flower"}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000031',
+    '67100000-0000-4000-8000-000000000001',
+    22,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.unreviewed","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Unreviewed synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000032',
+    '67100000-0000-4000-8000-000000000001',
+    23,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.rejected","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Rejected synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000033',
+    '67100000-0000-4000-8000-000000000005',
+    0,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.forbidden","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Forbidden synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000034',
+    '67100000-0000-4000-8000-000000000003',
+    0,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.deleted","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Deleted synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000035',
+    '67100000-0000-4000-8000-000000000001',
+    24,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.expired","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Expired synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    '2026-07-29T00:00:00Z'
+  ),
+  (
+    '67300000-0000-4000-8000-000000000036',
+    '67100000-0000-4000-8000-000000000004',
+    0,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.blocked","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Blocked synthetic alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
+  );
+
+select private.review_knowledge_assertion(
+  review.assertion_id,
+  review.decision,
+  review.entity_id,
+  review.related_entity_id,
+  review.evidence_status,
+  'synthetic publication fixture'
+)
+from (
+  values
+    ('67300000-0000-4000-8000-000000000001'::uuid, 'accepted', '67200000-0000-4000-8000-000000000001'::uuid, null::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000002'::uuid, 'accepted', '67200000-0000-4000-8000-000000000001'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000003'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'disputed'),
+    ('67300000-0000-4000-8000-000000000004'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'historical'),
+    ('67300000-0000-4000-8000-000000000005'::uuid, 'accepted', '67200000-0000-4000-8000-000000000006'::uuid, null::uuid, 'unknown'),
+    ('67300000-0000-4000-8000-000000000006'::uuid, 'accepted', '67200000-0000-4000-8000-000000000006'::uuid, null::uuid, 'retracted'),
+    ('67300000-0000-4000-8000-000000000007'::uuid, 'accepted', '67200000-0000-4000-8000-000000000003'::uuid, null::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000008'::uuid, 'accepted', '67200000-0000-4000-8000-000000000003'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000009'::uuid, 'accepted', '67200000-0000-4000-8000-000000000004'::uuid, null::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000010'::uuid, 'accepted', '67200000-0000-4000-8000-000000000004'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000011'::uuid, 'accepted', '67200000-0000-4000-8000-000000000005'::uuid, null::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000012'::uuid, 'accepted', '67200000-0000-4000-8000-000000000005'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000013'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'disputed'),
+    ('67300000-0000-4000-8000-000000000014'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'historical'),
+    ('67300000-0000-4000-8000-000000000015'::uuid, 'accepted', '67200000-0000-4000-8000-000000000001'::uuid, null::uuid, 'unknown'),
+    ('67300000-0000-4000-8000-000000000016'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'retracted'),
+    ('67300000-0000-4000-8000-000000000017'::uuid, 'accepted', '67200000-0000-4000-8000-000000000003'::uuid, null::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000018'::uuid, 'accepted', '67200000-0000-4000-8000-000000000005'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000019'::uuid, 'accepted', '67200000-0000-4000-8000-000000000005'::uuid, null::uuid, 'disputed'),
+    ('67300000-0000-4000-8000-000000000020'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, '67200000-0000-4000-8000-000000000006'::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000021'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'unknown'),
+    ('67300000-0000-4000-8000-000000000022'::uuid, 'accepted', '67200000-0000-4000-8000-000000000003'::uuid, '67200000-0000-4000-8000-000000000004'::uuid, 'confirmed'),
+    ('67300000-0000-4000-8000-000000000023'::uuid, 'accepted', '67200000-0000-4000-8000-000000000005'::uuid, '67200000-0000-4000-8000-000000000002'::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000032'::uuid, 'rejected', null::uuid, null::uuid, null::text),
+    ('67300000-0000-4000-8000-000000000033'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000034'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000035'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source'),
+    ('67300000-0000-4000-8000-000000000036'::uuid, 'accepted', '67200000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source')
+) as review(
+  assertion_id,
+  decision,
+  entity_id,
+  related_entity_id,
+  evidence_status
+);
+
+update catalog.sources
+set status = 'blocked'
+where id in (
+  'synthetic-graph-review-source',
+  'synthetic-publication-blocked-source'
+);
+
+select is(
+  (select count(*) from api.published_knowledge_nodes)::bigint,
+  0::bigint,
+  'import and review alone publish zero graph nodes'
+);
+select is(
+  (select count(*) from api.published_knowledge_claims)::bigint,
+  0::bigint,
+  'import and review alone publish zero graph claims'
+);
+select is(
+  (select count(*) from api.published_knowledge_edges)::bigint,
+  0::bigint,
+  'import and review alone publish zero graph edges'
+);
+
+create temporary table task5_publication_state (
+  first_snapshot_id uuid,
+  first_node_count bigint,
+  first_claim_count bigint,
+  first_edge_count bigint,
+  inventory_reference_count bigint
+) on commit drop;
+
+set local role source_reviewer;
+select private.publish_reviewed_knowledge_graph() as first_snapshot_id
+\gset
+reset role;
+
+insert into task5_publication_state(
+  first_snapshot_id,
+  first_node_count,
+  first_claim_count,
+  first_edge_count,
+  inventory_reference_count
+)
+select
+  :'first_snapshot_id'::uuid,
+  (select count(*) from api.published_knowledge_nodes),
+  (select count(*) from api.published_knowledge_claims),
+  (select count(*) from api.published_knowledge_edges),
+  (select count(*) from api.catalog_references);
+
+select ok(
+  (
+    select
+      snapshot.snapshot_id = :'first_snapshot_id'::uuid
+      and snapshot.published_at is not null
+    from api.published_knowledge_snapshot as snapshot
+    where snapshot.singleton
+  ),
+  'the first publication atomically exposes one current snapshot'
+);
+select is(
+  (select count(*) from api.published_knowledge_nodes)::bigint,
+  6::bigint,
+  'reviewed entity-kind and name assertions create six canonical nodes'
+);
+select is(
+  (
+    select count(distinct kind)
+    from api.published_knowledge_nodes
+  )::bigint,
+  4::bigint,
+  'the public snapshot contains all four node kinds'
+);
+select ok(
+  (
+    select bool_and(
+      case id
+        when '67200000-0000-4000-8000-000000000001' then
+          kind = 'origin_population'
+          and canonical_name = 'Synthetic published origin'
+        when '67200000-0000-4000-8000-000000000002' then
+          kind = 'cultivar'
+          and canonical_name = 'Synthetic published child'
+        when '67200000-0000-4000-8000-000000000003' then
+          kind = 'genetic_sample'
+          and canonical_name = 'Synthetic published sample one'
+        when '67200000-0000-4000-8000-000000000004' then
+          kind = 'genetic_sample'
+          and canonical_name = 'Synthetic published sample two'
+        when '67200000-0000-4000-8000-000000000005' then
+          kind = 'product'
+          and canonical_name = 'Synthetic published product'
+        when '67200000-0000-4000-8000-000000000006' then
+          kind = 'cultivar'
+          and canonical_name = 'Synthetic published parent'
+        else false
+      end
+    )
+    from api.published_knowledge_nodes
+  ),
+  'public nodes use only reviewed canonical UUID mappings and reviewed names'
+);
+
+select is(
+  (select count(*) from api.published_knowledge_claims)::bigint,
+  19::bigint,
+  'the first snapshot publishes every eligible closed claim'
+);
+select is(
+  (
+    select count(distinct evidence_status)
+    from api.published_knowledge_claims
+  )::bigint,
+  6::bigint,
+  'all six evidence states survive unchanged in public claims'
+);
+select set_eq(
+  $$
+    select distinct evidence_status
+    from api.published_knowledge_claims
+  $$,
+  $$
+    values
+      ('confirmed'::text),
+      ('single_source'::text),
+      ('disputed'::text),
+      ('historical'::text),
+      ('unknown'::text),
+      ('retracted'::text)
+  $$,
+  'the public claim status set is exactly the six reviewed evidence states'
+);
+
+select ok(
+  not exists (
+    select 1
+    from api.published_knowledge_claims as claim
+    where not private.jsonb_has_exact_keys(
+      claim.evidence,
+      array[
+        'sourceName',
+        'sourceVersion',
+        'retrievedAt',
+        'citationUrl',
+        'sourceLocator',
+        'extractionMethod',
+        'attribution'
+      ]
+    )
+    or claim.evidence ->> 'sourceName' is null
+    or claim.evidence ->> 'retrievedAt' is null
+    or claim.evidence ->> 'sourceLocator' is null
+    or claim.evidence ->> 'extractionMethod'
+      not in ('structured', 'manual', 'ai_assisted')
+    or claim.evidence ->> 'attribution' is null
+  ),
+  'every public claim carries the complete sanitized evidence object'
+);
+select ok(
+  not exists (
+    select 1
+    from api.published_knowledge_edges as edge
+    where not private.jsonb_has_exact_keys(
+      edge.evidence,
+      array[
+        'sourceName',
+        'sourceVersion',
+        'retrievedAt',
+        'citationUrl',
+        'sourceLocator',
+        'extractionMethod',
+        'attribution'
+      ]
+    )
+    or edge.evidence ->> 'sourceName' is null
+    or edge.evidence ->> 'retrievedAt' is null
+    or edge.evidence ->> 'sourceLocator' is null
+    or edge.evidence ->> 'extractionMethod'
+      not in ('structured', 'manual', 'ai_assisted')
+    or edge.evidence ->> 'attribution' is null
+  ),
+  'every public edge carries the complete sanitized evidence object'
+);
+select ok(
+  (
+    select
+      evidence -> 'citationUrl' = 'null'::jsonb
+      and evidence ->> 'sourceLocator' = '$.claims.child.alias'
+      and evidence ->> 'attribution'
+        = 'Synthetic unsafe-citation attribution'
+      and evidence ->> 'sourceName' = 'Synthetic publication source'
+      and evidence ->> 'sourceVersion' = 'publication-v2'
+      and evidence ->> 'retrievedAt' = '2026-07-30T15:01:00+00:00'
+    from api.published_knowledge_claims
+    where assertion_id = '67300000-0000-4000-8000-000000000013'
+  ),
+  'an unsafe non-HTTPS citation becomes null without losing locator or attribution'
+);
+select ok(
+  (
+    select
+      evidence ->> 'citationUrl'
+        = 'https://example.invalid/publication-safe-record'
+      and evidence ->> 'sourceLocator' = '$.claims.product.measurement'
+      and evidence ->> 'extractionMethod' = 'structured'
+    from api.published_knowledge_claims
+    where assertion_id = '67300000-0000-4000-8000-000000000019'
+  ),
+  'a safe HTTPS citation and exact extraction trace survive publication'
+);
+
+select ok(
+  not exists (
+    select 1
+    from api.published_knowledge_claims as claim
+    where not (
+      case claim.claim_kind
+        when 'entity_kind' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['entityKind']
+        )
+        when 'name' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['name', 'language']
+        )
+        when 'alias' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['name', 'language', 'aliasType', 'market']
+        )
+        when 'traditional_classification' then
+          private.jsonb_has_exact_keys(
+            claim.value,
+            array['classification']
+          )
+        when 'origin_region' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['regionName', 'regionCode']
+        )
+        when 'era' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['startYear', 'endYear', 'label']
+        )
+        when 'sample_reference' then private.jsonb_has_exact_keys(
+          claim.value,
+          array[
+            'sampleIdentifier',
+            'datasetName',
+            'datasetVersion',
+            'submitter',
+            'laboratory',
+            'sampledAt'
+          ]
+        )
+        when 'product_market' then private.jsonb_has_exact_keys(
+          claim.value,
+          array['countryCode', 'medical']
+        )
+        when 'measurement' then private.jsonb_has_exact_keys(
+          claim.value,
+          array[
+            'analyte',
+            'value',
+            'unit',
+            'productForm',
+            'batchIdentifier',
+            'measuredAt'
+          ]
+        )
+        else false
+      end
+    )
+  ),
+  'public claim values are closed domain objects without source identity or trace fields'
+);
+
+select is(
+  (select count(*) from api.published_knowledge_edges)::bigint,
+  4::bigint,
+  'the first snapshot publishes all four eligible synthetic relations'
+);
+select ok(
+  (
+    select
+      count(*) filter (where layer = 'documented_lineage') = 2
+      and count(*) filter (where layer = 'genetic_similarity') = 1
+      and count(*) filter (where layer = 'product_mapping') = 1
+    from api.published_knowledge_edges
+  ),
+  'lineage, genetic similarity, and product mapping stay in separate layers'
+);
+select ok(
+  (
+    select
+      to_node_id is null
+      and layer = 'documented_lineage'
+      and details = '{}'::jsonb
+    from api.published_knowledge_edges
+    where assertion_id = '67300000-0000-4000-8000-000000000021'
+      and relationship = 'unknown_parent'
+  ),
+  'an unknown parent remains a documented-lineage edge without a target'
+);
+select ok(
+  (
+    select
+      layer = 'genetic_similarity'
+      and from_node_id = '67200000-0000-4000-8000-000000000003'
+      and to_node_id = '67200000-0000-4000-8000-000000000004'
+      and position is null
+      and private.jsonb_has_exact_keys(
+        details,
+        array[
+          'method',
+          'datasetName',
+          'datasetVersion',
+          'metricName',
+          'value',
+          'unit'
+        ]
+      )
+    from api.published_knowledge_edges
+    where assertion_id = '67300000-0000-4000-8000-000000000022'
+  ),
+  'genetic evidence stays between canonical sample UUIDs with genetic-only details'
+);
+select ok(
+  (
+    select
+      layer = 'product_mapping'
+      and from_node_id = '67200000-0000-4000-8000-000000000005'
+      and to_node_id = '67200000-0000-4000-8000-000000000002'
+      and details = '{"productForm":"flower"}'::jsonb
+    from api.published_knowledge_edges
+    where assertion_id = '67300000-0000-4000-8000-000000000023'
+  ),
+  'product mapping stays product-to-cultivar with only its product form'
+);
+
+select is(
+  (
+    select count(*)
+    from api.published_knowledge_claims
+    where assertion_id in (
+      '67300000-0000-4000-8000-000000000031',
+      '67300000-0000-4000-8000-000000000032',
+      '67300000-0000-4000-8000-000000000033',
+      '67300000-0000-4000-8000-000000000034',
+      '67300000-0000-4000-8000-000000000035',
+      '67300000-0000-4000-8000-000000000036'
+    )
+  )::bigint,
+  0::bigint,
+  'unreviewed, rejected, forbidden, deleted, expired, and blocked-source assertions are absent'
+);
+
+select ok(
+  (
+    select
+      snapshot.assertion_count = 23
+      and snapshot.previous_snapshot_id is null
+      and snapshot.published_by <> ''
+    from catalog.knowledge_publication_snapshots as snapshot
+    where snapshot.id = :'first_snapshot_id'::uuid
+  )
+  and (
+    select snapshot_id = :'first_snapshot_id'::uuid
+    from catalog.knowledge_current_snapshot
+    where singleton
+  )
+  and (
+    select count(*) = 6
+    from catalog.knowledge_snapshot_nodes
+    where snapshot_id = :'first_snapshot_id'::uuid
+  )
+  and (
+    select count(*) = 19
+    from catalog.knowledge_snapshot_claims
+    where snapshot_id = :'first_snapshot_id'::uuid
+  )
+  and (
+    select count(*) = 4
+    from catalog.knowledge_snapshot_edges
+    where snapshot_id = :'first_snapshot_id'::uuid
+  ),
+  'the first private snapshot is complete and the current pointer moves only after construction'
+);
+
+savepoint malformed_lineage_endpoint;
+update catalog.assertion_reviews
+set related_entity_id = null
+where assertion_id = '67300000-0000-4000-8000-000000000020';
+
+select throws_ok(
+  $$select private.publish_reviewed_knowledge_graph()$$,
+  '22023',
+  null,
+  'publication rejects a documented lineage relation without its reviewed endpoint'
+);
+rollback to savepoint malformed_lineage_endpoint;
+
+select ok(
+  private.jsonb_has_exact_keys(
+    api.get_published_knowledge_graph(),
+    array['snapshotId', 'publishedAt', 'nodes', 'claims', 'edges']
+  )
+  and jsonb_typeof(api.get_published_knowledge_graph() -> 'nodes') = 'array'
+  and jsonb_typeof(api.get_published_knowledge_graph() -> 'claims') = 'array'
+  and jsonb_typeof(api.get_published_knowledge_graph() -> 'edges') = 'array',
+  'the graph RPC returns the exact atomic top-level shape'
+);
+select is(
+  api.get_published_knowledge_graph() #>> '{snapshotId}',
+  :'first_snapshot_id',
+  'the graph RPC identifies the same current snapshot as the public projection'
+);
+select is(
+  api.get_published_knowledge_graph() #>> '{nodes,0,id}',
+  '67200000-0000-4000-8000-000000000001',
+  'the graph RPC orders nodes deterministically by canonical UUID'
+);
+select is(
+  api.get_published_knowledge_graph() #>> '{claims,0,assertionId}',
+  '67300000-0000-4000-8000-000000000001',
+  'the graph RPC orders claims deterministically by assertion UUID'
+);
+select is(
+  api.get_published_knowledge_graph() #>> '{edges,0,assertionId}',
+  '67300000-0000-4000-8000-000000000020',
+  'the graph RPC orders edges deterministically by assertion UUID'
+);
+select is(
+  jsonb_array_length(api.get_published_knowledge_graph() -> 'nodes'),
+  6,
+  'the graph RPC returns every node from one snapshot'
+);
+select is(
+  jsonb_array_length(api.get_published_knowledge_graph() -> 'claims'),
+  19,
+  'the graph RPC returns every claim from one snapshot'
+);
+select is(
+  jsonb_array_length(api.get_published_knowledge_graph() -> 'edges'),
+  4,
+  'the graph RPC returns every edge from one snapshot'
+);
+
+set local role authenticated;
+select api.get_published_knowledge_graph() as authenticated_graph
+\gset
+reset role;
+
+select is(
+  :'authenticated_graph'::jsonb,
+  api.get_published_knowledge_graph(),
+  'authenticated readers receive the complete atomic graph'
+);
+
+insert into catalog.normalized_assertions(
+  id,
+  source_record_id,
+  assertion_index,
+  assertion_kind,
+  subject_external_key,
+  payload
+) values (
+  '67300000-0000-4000-8000-000000000040',
+  '67100000-0000-4000-8000-000000000001',
+  25,
+  'name',
+  'synthetic-publication-child',
+  '{"kind":"name","trace":{"sourceLocator":"$.malformed.duplicateName","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Synthetic conflicting canonical name","language":"en"}'
+);
+
+select private.review_knowledge_assertion(
+  '67300000-0000-4000-8000-000000000040',
+  'accepted',
+  '67200000-0000-4000-8000-000000000002',
+  null,
+  'disputed',
+  'synthetic malformed duplicate canonical name'
+);
+
+select throws_ok(
+  $$select private.publish_reviewed_knowledge_graph()$$,
+  '22023',
+  null,
+  'malformed graph data aborts publication'
+);
+select is(
+  (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
+  1::bigint,
+  'a malformed publication does not leave private snapshot metadata behind'
+);
+select is(
+  (
+    select snapshot_id
+    from catalog.knowledge_current_snapshot
+    where singleton
+  ),
+  :'first_snapshot_id'::uuid,
+  'a malformed publication leaves the private current pointer unchanged'
+);
+select is(
+  (
+    select snapshot_id
+    from api.published_knowledge_snapshot
+    where singleton
+  ),
+  :'first_snapshot_id'::uuid,
+  'a malformed publication leaves the public snapshot unchanged'
+);
+select ok(
+  (
+    select
+      first_node_count = (select count(*) from api.published_knowledge_nodes)
+      and first_claim_count = (
+        select count(*) from api.published_knowledge_claims
+      )
+      and first_edge_count = (
+        select count(*) from api.published_knowledge_edges
+      )
+    from task5_publication_state
+  ),
+  'a malformed publication leaves every public graph row count unchanged'
+);
+
+select private.review_knowledge_assertion(
+  '67300000-0000-4000-8000-000000000040',
+  'rejected',
+  null,
+  null,
+  null,
+  'synthetic malformed duplicate rejected'
+);
+
+set local role source_reviewer;
+select private.publish_reviewed_knowledge_graph() as second_snapshot_id
+\gset
+reset role;
+
+select isnt(
+  :'second_snapshot_id'::uuid,
+  :'first_snapshot_id'::uuid,
+  'a second successful publication creates a new snapshot UUID'
+);
+select is(
+  (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
+  2::bigint,
+  'a second successful publication preserves both immutable private snapshots'
+);
+select ok(
+  (
+    select
+      previous_snapshot_id = :'first_snapshot_id'::uuid
+      and assertion_count = 23
+    from catalog.knowledge_publication_snapshots
+    where id = :'second_snapshot_id'::uuid
+  ),
+  'the second snapshot links to the preceding immutable snapshot'
+);
+select ok(
+  (
+    select count(*) = 6
+    from catalog.knowledge_snapshot_nodes
+    where snapshot_id = :'first_snapshot_id'::uuid
+  )
+  and (
+    select count(*) = 19
+    from catalog.knowledge_snapshot_claims
+    where snapshot_id = :'first_snapshot_id'::uuid
+  )
+  and (
+    select count(*) = 4
+    from catalog.knowledge_snapshot_edges
+    where snapshot_id = :'first_snapshot_id'::uuid
+  ),
+  'the first private snapshot content remains immutable after republishing'
+);
+select ok(
+  (
+    select snapshot_id = :'second_snapshot_id'::uuid
+    from api.published_knowledge_snapshot
+    where singleton
+  )
+  and not exists (
+    select 1
+    from api.published_knowledge_nodes
+    where snapshot_id <> :'second_snapshot_id'::uuid
+  )
+  and not exists (
+    select 1
+    from api.published_knowledge_claims
+    where snapshot_id <> :'second_snapshot_id'::uuid
+  )
+  and not exists (
+    select 1
+    from api.published_knowledge_edges
+    where snapshot_id <> :'second_snapshot_id'::uuid
+  ),
+  'the public projection atomically replaces every row with one new snapshot'
+);
+select is(
+  api.get_published_knowledge_graph() #>> '{snapshotId}',
+  :'second_snapshot_id',
+  'the atomic RPC moves to the second successful snapshot'
+);
+select is(
+  (select count(*) from api.catalog_references)::bigint,
+  (
+    select inventory_reference_count
+    from task5_publication_state
+  ),
+  'knowledge publication preserves the existing inventory catalog projection'
+);
+
 select * from finish();
 rollback;
