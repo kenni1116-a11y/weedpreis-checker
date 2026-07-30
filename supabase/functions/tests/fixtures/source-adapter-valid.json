@@ -1,4 +1,5 @@
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-contract-source",
   "startedAt": "2026-07-28T18:00:00.000Z",
   "completedAt": "2026-07-28T18:00:02.000Z",
@@ -22,23 +23,38 @@
       "assertions": [
         {
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[0].name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "synthetic-cultivar-001",
           "name": "Synthetic Cultivar One",
           "language": "en"
         },
         {
           "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.records[0].aliases[0]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "synthetic-cultivar-001",
           "name": "Synthetic Alias One",
-          "language": "en"
+          "language": "en",
+          "aliasType": "spelling",
+          "market": null
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.records[0].measurements.thc",
+            "extractionMethod": "ai_assisted"
+          },
           "subjectExternalKey": "synthetic-cultivar-001",
           "analyte": "thc",
           "value": 21.375,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": null,
           "measuredAt": "2026-07-01T00:00:00.000Z"
         }
       ]
@@ -59,6 +75,10 @@
       "assertions": [
         {
           "kind": "product_cultivar",
+          "trace": {
+            "sourceLocator": "https://example.invalid/synthetic-product-001#cultivar",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "synthetic-product-001",
           "cultivarExternalKey": "synthetic-cultivar-001",
           "productForm": "flower"

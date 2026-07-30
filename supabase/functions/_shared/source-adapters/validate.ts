@@ -1,37 +1,38 @@
 import type {
   AdapterBatch,
   AdapterRecord,
+  AssertionTrace,
   JsonValue,
   NormalizedAssertion,
   SourceEvidence,
   ValidatedAdapterBatch,
-} from './types.ts'
+} from "./types.ts";
 
-type UnknownRecord = Record<string, unknown>
+type UnknownRecord = Record<string, unknown>;
 
 const timestampPattern =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/
-const sha256Pattern = /^[0-9a-f]{64}$/
-const sourceIdPattern = /^[a-z0-9][a-z0-9._-]{2,79}$/
-const productForms = ['flower', 'extract', 'oil', 'other'] as const
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+const sha256Pattern = /^[0-9a-f]{64}$/;
+const sourceIdPattern = /^[a-z0-9][a-z0-9._-]{2,79}$/;
+const productForms = ["flower", "extract", "oil", "other"] as const;
 
 function invalid(path: string, reason: string): never {
-  throw new Error(`Invalid adapter batch at ${path}: ${reason}`)
+  throw new Error(`Invalid adapter batch at ${path}: ${reason}`);
 }
 
 function recordAt(value: unknown, path: string): UnknownRecord {
   if (
-    typeof value !== 'object'
-    || value === null
-    || Array.isArray(value)
-    || (
-      Object.getPrototypeOf(value) !== Object.prototype
-      && Object.getPrototypeOf(value) !== null
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    (
+      Object.getPrototypeOf(value) !== Object.prototype &&
+      Object.getPrototypeOf(value) !== null
     )
   ) {
-    invalid(path, 'expected an object')
+    invalid(path, "expected an object");
   }
-  return value as UnknownRecord
+  return value as UnknownRecord;
 }
 
 function exactKeys(
@@ -39,12 +40,12 @@ function exactKeys(
   allowed: readonly string[],
   path: string,
 ): void {
-  const allowedKeys = new Set(allowed)
-  const unknownKey = Object.keys(record).find((key) => !allowedKeys.has(key))
-  if (unknownKey) invalid(path, `unknown field ${unknownKey}`)
+  const allowedKeys = new Set(allowed);
+  const unknownKey = Object.keys(record).find((key) => !allowedKeys.has(key));
+  if (unknownKey) invalid(path, `unknown field ${unknownKey}`);
 
-  const missingKey = allowed.find((key) => !(key in record))
-  if (missingKey) invalid(path, `missing field ${missingKey}`)
+  const missingKey = allowed.find((key) => !(key in record));
+  if (missingKey) invalid(path, `missing field ${missingKey}`);
 }
 
 function text(
@@ -53,14 +54,14 @@ function text(
   maximumLength: number,
 ): string {
   if (
-    typeof value !== 'string'
-    || value.length === 0
-    || value.length > maximumLength
-    || value.trim() !== value
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    value.trim() !== value
   ) {
-    invalid(path, `expected 1-${maximumLength} trimmed characters`)
+    invalid(path, `expected 1-${maximumLength} trimmed characters`);
   }
-  return value
+  return value;
 }
 
 function nullableText(
@@ -68,22 +69,22 @@ function nullableText(
   path: string,
   maximumLength: number,
 ): string | null {
-  return value === null ? null : text(value, path, maximumLength)
+  return value === null ? null : text(value, path, maximumLength);
 }
 
 function timestamp(value: unknown, path: string): string {
   if (
-    typeof value !== 'string'
-    || !timestampPattern.test(value)
-    || !Number.isFinite(Date.parse(value))
+    typeof value !== "string" ||
+    !timestampPattern.test(value) ||
+    !Number.isFinite(Date.parse(value))
   ) {
-    invalid(path, 'expected an ISO timestamp')
+    invalid(path, "expected an ISO timestamp");
   }
-  return value
+  return value;
 }
 
 function nullableTimestamp(value: unknown, path: string): string | null {
-  return value === null ? null : timestamp(value, path)
+  return value === null ? null : timestamp(value, path);
 }
 
 function oneOf<const Values extends readonly string[]>(
@@ -91,74 +92,74 @@ function oneOf<const Values extends readonly string[]>(
   values: Values,
   path: string,
 ): Values[number] {
-  if (typeof value !== 'string' || !values.includes(value)) {
-    invalid(path, `expected one of ${values.join(', ')}`)
+  if (typeof value !== "string" || !values.includes(value)) {
+    invalid(path, `expected one of ${values.join(", ")}`);
   }
-  return value as Values[number]
+  return value as Values[number];
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
   if (
-    value === null
-    || typeof value === 'string'
-    || typeof value === 'boolean'
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
   ) {
-    return true
+    return true;
   }
-  if (typeof value === 'number') return Number.isFinite(value)
-  if (Array.isArray(value)) return value.every(isJsonValue)
-  if (typeof value !== 'object') return false
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (typeof value !== "object") return false;
   if (
-    Object.getPrototypeOf(value) !== Object.prototype
-    && Object.getPrototypeOf(value) !== null
+    Object.getPrototypeOf(value) !== Object.prototype &&
+    Object.getPrototypeOf(value) !== null
   ) {
-    return false
+    return false;
   }
-  return Object.values(value).every(isJsonValue)
+  return Object.values(value).every(isJsonValue);
 }
 
 function safeRetrievalReference(value: unknown, path: string): string {
-  const reference = text(value, path, 2048)
-  let url: URL
+  const reference = text(value, path, 2048);
+  let url: URL;
   try {
-    url = new URL(reference)
+    url = new URL(reference);
   } catch {
-    invalid(path, 'expected an absolute HTTP(S) URL')
+    invalid(path, "expected an absolute HTTP(S) URL");
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    invalid(path, 'expected an absolute HTTP(S) URL')
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    invalid(path, "expected an absolute HTTP(S) URL");
   }
-  return reference
+  return reference;
 }
 
 function evidence(value: unknown, path: string): SourceEvidence {
-  const input = recordAt(value, path)
-  const kind = input.kind
+  const input = recordAt(value, path);
+  const kind = input.kind;
 
-  if (kind === 'raw') {
-    exactKeys(input, ['kind', 'mediaType', 'payload'], path)
+  if (kind === "raw") {
+    exactKeys(input, ["kind", "mediaType", "payload"], path);
     const mediaType = oneOf(
       input.mediaType,
-      ['application/json', 'application/xml', 'text/csv'] as const,
+      ["application/json", "application/xml", "text/csv"] as const,
       `${path}.mediaType`,
-    )
+    );
     if (!isJsonValue(input.payload)) {
-      invalid(`${path}.payload`, 'expected a finite JSON value')
+      invalid(`${path}.payload`, "expected a finite JSON value");
     }
-    return { kind, mediaType, payload: input.payload }
+    return { kind, mediaType, payload: input.payload };
   }
 
-  if (kind === 'checksum') {
+  if (kind === "checksum") {
     exactKeys(
       input,
-      ['kind', 'algorithm', 'digest', 'retrievalReference'],
+      ["kind", "algorithm", "digest", "retrievalReference"],
       path,
-    )
-    if (input.algorithm !== 'sha256') {
-      invalid(`${path}.algorithm`, 'expected sha256')
+    );
+    if (input.algorithm !== "sha256") {
+      invalid(`${path}.algorithm`, "expected sha256");
     }
-    if (typeof input.digest !== 'string' || !sha256Pattern.test(input.digest)) {
-      invalid(`${path}.digest`, 'expected a lowercase SHA-256 digest')
+    if (typeof input.digest !== "string" || !sha256Pattern.test(input.digest)) {
+      invalid(`${path}.digest`, "expected a lowercase SHA-256 digest");
     }
     return {
       kind,
@@ -168,94 +169,353 @@ function evidence(value: unknown, path: string): SourceEvidence {
         input.retrievalReference,
         `${path}.retrievalReference`,
       ),
-    }
+    };
   }
 
-  invalid(`${path}.kind`, 'expected raw or checksum')
+  invalid(`${path}.kind`, "expected raw or checksum");
 }
 
 function externalKey(value: unknown, path: string): string {
-  return text(value, path, 240)
+  return text(value, path, 240);
 }
 
 function language(value: unknown, path: string): string | null {
-  const result = nullableText(value, path, 35)
+  const result = nullableText(value, path, 35);
   if (
-    result !== null
-    && !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(result)
+    result !== null &&
+    !/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(result)
   ) {
-    invalid(path, 'expected a BCP 47-style language tag')
+    invalid(path, "expected a BCP 47-style language tag");
   }
-  return result
+  return result;
+}
+
+function finiteNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    invalid(path, "expected a finite number");
+  }
+  return value;
+}
+
+function nullableFiniteNumber(value: unknown, path: string): number | null {
+  return value === null ? null : finiteNumber(value, path);
+}
+
+function nullableYear(value: unknown, path: string): number | null {
+  if (value === null) return null;
+  const year = finiteNumber(value, path);
+  if (!Number.isInteger(year)) invalid(path, "expected an integer year");
+  return year;
+}
+
+function assertionTrace(value: unknown, path: string): AssertionTrace {
+  const input = recordAt(value, path);
+  exactKeys(input, ["sourceLocator", "extractionMethod"], path);
+  return {
+    sourceLocator: text(input.sourceLocator, `${path}.sourceLocator`, 1000),
+    extractionMethod: oneOf(
+      input.extractionMethod,
+      ["structured", "manual", "ai_assisted"] as const,
+      `${path}.extractionMethod`,
+    ),
+  };
 }
 
 function assertion(
   value: unknown,
   path: string,
 ): NormalizedAssertion {
-  const input = recordAt(value, path)
-  const kind = input.kind
+  const input = recordAt(value, path);
+  const kind = input.kind;
 
-  if (kind === 'name' || kind === 'alias') {
-    exactKeys(input, ['kind', 'subjectExternalKey', 'name', 'language'], path)
+  if (kind === "entity_kind") {
+    exactKeys(
+      input,
+      ["kind", "trace", "subjectExternalKey", "entityKind"],
+      path,
+    );
     return {
       kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      entityKind: oneOf(
+        input.entityKind,
+        ["origin_population", "cultivar", "genetic_sample", "product"] as const,
+        `${path}.entityKind`,
+      ),
+    };
+  }
+
+  if (kind === "name") {
+    exactKeys(input, [
+      "kind",
+      "trace",
+      "subjectExternalKey",
+      "name",
+      "language",
+    ], path);
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
       subjectExternalKey: externalKey(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
       ),
       name: text(input.name, `${path}.name`, 240),
       language: language(input.language, `${path}.language`),
-    }
+    };
   }
 
-  if (kind === 'lineage') {
+  if (kind === "alias") {
     exactKeys(
       input,
       [
-        'kind',
-        'subjectExternalKey',
-        'parentExternalKey',
-        'relationship',
-        'position',
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "name",
+        "language",
+        "aliasType",
+        "market",
       ],
       path,
-    )
-    if (input.position !== null && input.position !== 1 && input.position !== 2) {
-      invalid(`${path}.position`, 'expected 1, 2, or null')
-    }
+    );
     return {
       kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
       subjectExternalKey: externalKey(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
       ),
-      parentExternalKey: externalKey(
-        input.parentExternalKey,
-        `${path}.parentExternalKey`,
+      name: text(input.name, `${path}.name`, 240),
+      language: language(input.language, `${path}.language`),
+      aliasType: oneOf(
+        input.aliasType,
+        ["spelling", "breeder", "market", "historical", "other"] as const,
+        `${path}.aliasType`,
       ),
-      relationship: oneOf(
-        input.relationship,
-        ['reported_parent', 'historical_origin'] as const,
-        `${path}.relationship`,
-      ),
-      position: input.position,
-    }
+      market: nullableText(input.market, `${path}.market`, 240),
+    };
   }
 
-  if (kind === 'product_cultivar') {
+  if (kind === "traditional_classification") {
+    exactKeys(
+      input,
+      ["kind", "trace", "subjectExternalKey", "classification"],
+      path,
+    );
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      classification: oneOf(
+        input.classification,
+        ["sativa", "indica", "hybrid"] as const,
+        `${path}.classification`,
+      ),
+    };
+  }
+
+  if (kind === "origin_region") {
+    exactKeys(input, [
+      "kind",
+      "trace",
+      "subjectExternalKey",
+      "regionName",
+      "regionCode",
+    ], path);
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      regionName: text(input.regionName, `${path}.regionName`, 240),
+      regionCode: nullableText(input.regionCode, `${path}.regionCode`, 35),
+    };
+  }
+
+  if (kind === "era") {
+    exactKeys(input, [
+      "kind",
+      "trace",
+      "subjectExternalKey",
+      "startYear",
+      "endYear",
+      "label",
+    ], path);
+    const startYear = nullableYear(input.startYear, `${path}.startYear`);
+    const endYear = nullableYear(input.endYear, `${path}.endYear`);
+    if (startYear !== null && endYear !== null && endYear < startYear) {
+      invalid(`${path}.endYear`, "must not be before startYear");
+    }
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      startYear,
+      endYear,
+      label: nullableText(input.label, `${path}.label`, 240),
+    };
+  }
+
+  if (kind === "sample_reference") {
     exactKeys(
       input,
       [
-        'kind',
-        'subjectExternalKey',
-        'cultivarExternalKey',
-        'productForm',
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "sampleIdentifier",
+        "datasetName",
+        "datasetVersion",
+        "submitter",
+        "laboratory",
+        "sampledAt",
       ],
       path,
-    )
+    );
     return {
       kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      sampleIdentifier: text(
+        input.sampleIdentifier,
+        `${path}.sampleIdentifier`,
+        240,
+      ),
+      datasetName: text(input.datasetName, `${path}.datasetName`, 240),
+      datasetVersion: nullableText(
+        input.datasetVersion,
+        `${path}.datasetVersion`,
+        160,
+      ),
+      submitter: nullableText(input.submitter, `${path}.submitter`, 240),
+      laboratory: nullableText(input.laboratory, `${path}.laboratory`, 240),
+      sampledAt: nullableTimestamp(input.sampledAt, `${path}.sampledAt`),
+    };
+  }
+
+  if (kind === "lineage") {
+    exactKeys(
+      input,
+      [
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "relatedExternalKey",
+        "relationship",
+        "position",
+      ],
+      path,
+    );
+    if (
+      input.position !== null && input.position !== 1 && input.position !== 2
+    ) {
+      invalid(`${path}.position`, "expected 1, 2, or null");
+    }
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      relatedExternalKey: input.relatedExternalKey === null
+        ? null
+        : externalKey(input.relatedExternalKey, `${path}.relatedExternalKey`),
+      relationship: oneOf(
+        input.relationship,
+        [
+          "reported_parent",
+          "cross",
+          "backcross",
+          "selection_from",
+          "historical_origin",
+          "population_membership",
+          "unknown_parent",
+        ] as const,
+        `${path}.relationship`,
+      ),
+      position: input.position,
+    };
+  }
+
+  if (kind === "genetic_relation") {
+    exactKeys(
+      input,
+      [
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "relatedExternalKey",
+        "relationship",
+        "method",
+        "datasetName",
+        "datasetVersion",
+        "metricName",
+        "value",
+        "unit",
+      ],
+      path,
+    );
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      relatedExternalKey: externalKey(
+        input.relatedExternalKey,
+        `${path}.relatedExternalKey`,
+      ),
+      relationship: oneOf(
+        input.relationship,
+        ["genetic_similarity", "sample_match"] as const,
+        `${path}.relationship`,
+      ),
+      method: text(input.method, `${path}.method`, 240),
+      datasetName: text(input.datasetName, `${path}.datasetName`, 240),
+      datasetVersion: nullableText(
+        input.datasetVersion,
+        `${path}.datasetVersion`,
+        160,
+      ),
+      metricName: text(input.metricName, `${path}.metricName`, 240),
+      value: nullableFiniteNumber(input.value, `${path}.value`),
+      unit: nullableText(input.unit, `${path}.unit`, 100),
+    };
+  }
+
+  if (kind === "product_cultivar") {
+    exactKeys(
+      input,
+      [
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "cultivarExternalKey",
+        "productForm",
+      ],
+      path,
+    );
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
       subjectExternalKey: externalKey(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
@@ -269,96 +529,122 @@ function assertion(
         productForms,
         `${path}.productForm`,
       ),
-    }
+    };
   }
 
-  if (kind === 'measurement') {
+  if (kind === "product_market") {
+    exactKeys(input, [
+      "kind",
+      "trace",
+      "subjectExternalKey",
+      "countryCode",
+      "medical",
+    ], path);
+    if (input.medical !== true) invalid(`${path}.medical`, "expected true");
+    return {
+      kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
+      subjectExternalKey: externalKey(
+        input.subjectExternalKey,
+        `${path}.subjectExternalKey`,
+      ),
+      countryCode: text(input.countryCode, `${path}.countryCode`, 2),
+      medical: true,
+    };
+  }
+
+  if (kind === "measurement") {
     exactKeys(
       input,
       [
-        'kind',
-        'subjectExternalKey',
-        'analyte',
-        'value',
-        'unit',
-        'productForm',
-        'measuredAt',
+        "kind",
+        "trace",
+        "subjectExternalKey",
+        "analyte",
+        "value",
+        "unit",
+        "productForm",
+        "batchIdentifier",
+        "measuredAt",
       ],
       path,
-    )
-    if (typeof input.value !== 'number' || !Number.isFinite(input.value)) {
-      invalid(`${path}.value`, 'expected a finite number')
-    }
-    if (input.unit !== 'percent') {
-      invalid(`${path}.unit`, 'expected percent')
+    );
+    if (input.unit !== "percent") {
+      invalid(`${path}.unit`, "expected percent");
     }
     return {
       kind,
+      trace: assertionTrace(input.trace, `${path}.trace`),
       subjectExternalKey: externalKey(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
       ),
       analyte: oneOf(
         input.analyte,
-        ['thc', 'cbd'] as const,
+        ["thc", "cbd"] as const,
         `${path}.analyte`,
       ),
-      value: input.value,
+      value: finiteNumber(input.value, `${path}.value`),
       unit: input.unit,
       productForm: oneOf(
         input.productForm,
         productForms,
         `${path}.productForm`,
       ),
+      batchIdentifier: nullableText(
+        input.batchIdentifier,
+        `${path}.batchIdentifier`,
+        240,
+      ),
       measuredAt: nullableTimestamp(
         input.measuredAt,
         `${path}.measuredAt`,
       ),
-    }
+    };
   }
 
-  invalid(`${path}.kind`, 'unknown assertion kind')
+  invalid(`${path}.kind`, "unknown assertion kind");
 }
 
 function adapterRecord(value: unknown, path: string): AdapterRecord {
-  const input = recordAt(value, path)
+  const input = recordAt(value, path);
   exactKeys(
     input,
     [
-      'externalRecordKey',
-      'upstreamState',
-      'retrievedAt',
-      'sourceVersion',
-      'evidence',
-      'validFrom',
-      'validTo',
-      'assertions',
+      "externalRecordKey",
+      "upstreamState",
+      "retrievedAt",
+      "sourceVersion",
+      "evidence",
+      "validFrom",
+      "validTo",
+      "assertions",
     ],
     path,
-  )
+  );
   if (!Array.isArray(input.assertions)) {
-    invalid(`${path}.assertions`, 'expected an array')
+    invalid(`${path}.assertions`, "expected an array");
   }
   const upstreamState = oneOf(
     input.upstreamState,
-    ['present', 'deleted'] as const,
+    ["present", "deleted"] as const,
     `${path}.upstreamState`,
-  )
-  if (upstreamState === 'present' && input.assertions.length === 0) {
-    invalid(`${path}.assertions`, 'expected at least one assertion')
+  );
+  if (upstreamState === "present" && input.assertions.length === 0) {
+    invalid(`${path}.assertions`, "expected at least one assertion");
   }
-  if (upstreamState === 'deleted' && input.assertions.length !== 0) {
-    invalid(`${path}.assertions`, 'deleted records cannot make assertions')
+  if (upstreamState === "deleted" && input.assertions.length !== 0) {
+    invalid(`${path}.assertions`, "deleted records cannot make assertions");
   }
 
-  const validFrom = nullableTimestamp(input.validFrom, `${path}.validFrom`)
-  const validTo = nullableTimestamp(input.validTo, `${path}.validTo`)
+  const validFrom = nullableTimestamp(input.validFrom, `${path}.validFrom`);
+  const validTo = nullableTimestamp(input.validTo, `${path}.validTo`);
   if (
-    validFrom !== null
-    && validTo !== null
-    && Date.parse(validTo) < Date.parse(validFrom)
+    validFrom !== null &&
+    validTo !== null &&
+    Date.parse(validTo) < Date.parse(validFrom)
   ) {
-    invalid(`${path}.validTo`, 'must not be before validFrom')
+    invalid(`${path}.validTo`, "must not be before validFrom");
   }
 
   return {
@@ -379,12 +665,12 @@ function adapterRecord(value: unknown, path: string): AdapterRecord {
     assertions: input.assertions.map((item, index) =>
       assertion(item, `${path}.assertions[${index}]`)
     ),
-  }
+  };
 }
 
 function adapterError(value: unknown, path: string) {
-  const input = recordAt(value, path)
-  exactKeys(input, ['externalRecordKey', 'code', 'message'], path)
+  const input = recordAt(value, path);
+  exactKeys(input, ["externalRecordKey", "code", "message"], path);
   return {
     externalRecordKey: nullableText(
       input.externalRecordKey,
@@ -393,90 +679,97 @@ function adapterError(value: unknown, path: string) {
     ),
     code: oneOf(
       input.code,
-      ['timeout', 'schema_changed', 'rate_limited', 'invalid_record'] as const,
+      ["timeout", "schema_changed", "rate_limited", "invalid_record"] as const,
       `${path}.code`,
     ),
     message: text(input.message, `${path}.message`, 1000),
-  }
+  };
 }
 
 export function validateAdapterBatch(input: unknown): ValidatedAdapterBatch {
-  const value = recordAt(input, 'batch')
+  const value = recordAt(input, "batch");
   exactKeys(
     value,
     [
-      'sourceId',
-      'startedAt',
-      'completedAt',
-      'cursor',
-      'records',
-      'errors',
+      "contractVersion",
+      "sourceId",
+      "startedAt",
+      "completedAt",
+      "cursor",
+      "records",
+      "errors",
     ],
-    'batch',
-  )
+    "batch",
+  );
   if (
-    typeof value.sourceId !== 'string'
-    || !sourceIdPattern.test(value.sourceId)
+    typeof value.contractVersion !== "number" || value.contractVersion !== 2
   ) {
-    invalid('batch.sourceId', 'expected a stable lowercase source ID')
+    invalid("batch.contractVersion", "expected contract version 2");
+  }
+  if (
+    typeof value.sourceId !== "string" ||
+    !sourceIdPattern.test(value.sourceId)
+  ) {
+    invalid("batch.sourceId", "expected a stable lowercase source ID");
   }
   if (!Array.isArray(value.records)) {
-    invalid('batch.records', 'expected an array')
+    invalid("batch.records", "expected an array");
   }
   if (!Array.isArray(value.errors)) {
-    invalid('batch.errors', 'expected an array')
+    invalid("batch.errors", "expected an array");
   }
 
-  const startedAt = timestamp(value.startedAt, 'batch.startedAt')
-  const completedAt = timestamp(value.completedAt, 'batch.completedAt')
+  const startedAt = timestamp(value.startedAt, "batch.startedAt");
+  const completedAt = timestamp(value.completedAt, "batch.completedAt");
   if (Date.parse(completedAt) < Date.parse(startedAt)) {
-    invalid('batch.completedAt', 'must not be before startedAt')
+    invalid("batch.completedAt", "must not be before startedAt");
   }
 
   const records = value.records.map((item, index) =>
     adapterRecord(item, `records[${index}]`)
-  )
-  const seenKeys = new Set<string>()
+  );
+  const seenKeys = new Set<string>();
   for (const record of records) {
     if (seenKeys.has(record.externalRecordKey)) {
       invalid(
-        'batch.records.externalRecordKey',
+        "batch.records.externalRecordKey",
         `duplicate ${record.externalRecordKey}`,
-      )
+      );
     }
-    seenKeys.add(record.externalRecordKey)
+    seenKeys.add(record.externalRecordKey);
   }
 
-  const reviewReasonsByRecord: Record<string, string[]> = {}
+  const reviewReasonsByRecord: Record<string, string[]> = {};
   for (const record of records) {
-    if (record.upstreamState === 'deleted') {
+    if (record.upstreamState === "deleted") {
       reviewReasonsByRecord[record.externalRecordKey] = [
-        'upstream_record_deleted',
-      ]
-      continue
+        "upstream_record_deleted",
+      ];
+      continue;
     }
     const hasUnrealisticFlowerValue = record.assertions.some((item) =>
-      item.kind === 'measurement'
-      && item.productForm === 'flower'
-      && item.value > 70
-    )
+      item.kind === "measurement" &&
+      item.productForm === "flower" &&
+      item.value > 70
+    );
     if (hasUnrealisticFlowerValue) {
       reviewReasonsByRecord[record.externalRecordKey] = [
-        'flower_value_above_70',
-      ]
+        "flower_value_above_70",
+      ];
     }
   }
 
   const batch: AdapterBatch = {
+    contractVersion: 2,
     sourceId: value.sourceId,
     startedAt,
     completedAt,
-    cursor: nullableText(value.cursor, 'batch.cursor', 2000),
+    cursor: nullableText(value.cursor, "batch.cursor", 2000),
     records,
     errors: value.errors.map((item, index) =>
       adapterError(item, `errors[${index}]`)
     ),
-  }
+  };
 
-  return { batch, reviewReasonsByRecord }
+  return { batch, reviewReasonsByRecord };
 }
