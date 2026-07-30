@@ -181,6 +181,22 @@ Deno.test("source adapter validates knowledge assertion cross-field constraints"
   }
 });
 
+Deno.test("source adapter rejects scored sample_match assertions specifically", () => {
+  const input = graphFixture();
+  const relation = graphAssertion(
+    input,
+    "synthetic-sample-001",
+    "genetic_relation",
+  );
+  relation.relationship = "sample_match";
+
+  assertThrows(
+    () => validateAdapterBatch(input),
+    Error,
+    "sample_match does not carry a numeric score",
+  );
+});
+
 Deno.test("source adapter requires contract version 2", () => {
   const missingVersion = cloned(validFixture) as Record<string, unknown>;
   delete missingVersion.contractVersion;
