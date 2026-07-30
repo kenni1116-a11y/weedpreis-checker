@@ -183,7 +183,7 @@ from private.record_source_import(
             },
             "subjectExternalKey": "seed-child",
             "relatedExternalKey": "seed-additional-origin",
-            "relationship": "historical_origin",
+            "relationship": "selection_from",
             "position": null
           }
         ]
@@ -303,7 +303,7 @@ from private.record_source_import(
 );
 reset role;
 
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -316,9 +316,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'Synthetische kanonische Testangabe'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -331,9 +332,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'Synthetischer Testalias'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -346,9 +348,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000003',
+  'single_source',
   'Synthetische erste Elternangabe'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -361,9 +364,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000004',
+  'single_source',
   'Synthetische zweite Elternangabe'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -376,9 +380,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000005',
+  'single_source',
   'Synthetische zusätzliche Herkunft'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -391,9 +396,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000003',
   null,
+  'single_source',
   'Synthetischer Elternname'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -406,9 +412,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000004',
   null,
+  'single_source',
   'Synthetischer Elternname'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -421,9 +428,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'Synthetischer Herkunftsname'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -436,9 +444,10 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000002',
   null,
+  'single_source',
   'Synthetischer Produktname'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -451,6 +460,7 @@ select private.review_source_assertion(
   'accepted',
   '10000000-0000-4000-8000-000000000002',
   '10000000-0000-4000-8000-000000000001',
+  'single_source',
   'Synthetische Blütenzuordnung'
 );
 

@@ -1973,6 +1973,16 @@ insert into catalog.normalized_assertions(
     '{"kind":"alias","trace":{"sourceLocator":"$.excluded.blocked","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Blocked synthetic alias","language":"en","aliasType":"other","market":null}',
     null,
     null
+  ),
+  (
+    '67300000-0000-4000-8000-000000000037',
+    '67100000-0000-4000-8000-000000000001',
+    26,
+    'alias',
+    'synthetic-publication-child',
+    '{"kind":"alias","trace":{"sourceLocator":"$.excluded.legacyReviewerBypass","extractionMethod":"manual"},"subjectExternalKey":"synthetic-publication-child","name":"Legacy reviewer bypass alias","language":"en","aliasType":"other","market":null}',
+    null,
+    null
   );
 
 select private.review_knowledge_assertion(
@@ -2019,6 +2029,46 @@ from (
   entity_id,
   related_entity_id,
   evidence_status
+);
+
+savepoint version_two_legacy_acceptance;
+select throws_ok(
+  $$select private.review_source_assertion(
+      '67300000-0000-4000-8000-000000000037',
+      'accepted',
+      '67200000-0000-4000-8000-000000000002',
+      null,
+      'invalid version-2 legacy acceptance'
+    )$$,
+  '22023',
+  null,
+  'the legacy reviewer cannot accept a version-2 graph assertion'
+);
+rollback to savepoint version_two_legacy_acceptance;
+
+savepoint version_two_legacy_rejection;
+select throws_ok(
+  $$select private.review_source_assertion(
+      '67300000-0000-4000-8000-000000000037',
+      'rejected',
+      null,
+      null,
+      'invalid version-2 legacy rejection'
+    )$$,
+  '22023',
+  null,
+  'the legacy reviewer cannot reject a version-2 graph assertion'
+);
+rollback to savepoint version_two_legacy_rejection;
+
+select is(
+  (
+    select count(*)
+    from catalog.assertion_reviews
+    where assertion_id = '67300000-0000-4000-8000-000000000037'
+  )::bigint,
+  0::bigint,
+  'failed legacy review attempts leave the version-2 graph assertion unreviewed'
 );
 
 update catalog.sources
@@ -2369,11 +2419,36 @@ select is(
       '67300000-0000-4000-8000-000000000033',
       '67300000-0000-4000-8000-000000000034',
       '67300000-0000-4000-8000-000000000035',
-      '67300000-0000-4000-8000-000000000036'
+      '67300000-0000-4000-8000-000000000036',
+      '67300000-0000-4000-8000-000000000037'
     )
   )::bigint,
   0::bigint,
-  'unreviewed, rejected, forbidden, deleted, expired, and blocked-source assertions are absent'
+  'unreviewed, rejected, forbidden, deleted, expired, blocked, and legacy-bypass assertions are absent'
+);
+
+select lives_ok(
+  $$select private.review_knowledge_assertion(
+      '67300000-0000-4000-8000-000000000037',
+      'rejected',
+      null,
+      null,
+      null,
+      'valid graph-aware rejection'
+    )$$,
+  'the graph-aware reviewer still handles the version-2 assertion'
+);
+select ok(
+  (
+    select
+      decision = 'rejected'
+      and entity_id is null
+      and related_entity_id is null
+      and evidence_status is null
+    from catalog.assertion_reviews
+    where assertion_id = '67300000-0000-4000-8000-000000000037'
+  ),
+  'the graph-aware review records the version-2 decision without publication'
 );
 
 select ok(

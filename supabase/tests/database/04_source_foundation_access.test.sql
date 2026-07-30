@@ -413,11 +413,12 @@ where subject_external_key = 'synthetic-access-record'
 \gset
 
 set local role source_reviewer;
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   :'access_assertion_id'::uuid,
   'accepted',
   '33000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'Synthetic acceptance'
 );
 reset role;

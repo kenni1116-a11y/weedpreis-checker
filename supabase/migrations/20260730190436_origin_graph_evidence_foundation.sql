@@ -1055,6 +1055,7 @@ set search_path = ''
 as $$
 declare
   assertion_row catalog.normalized_assertions%rowtype;
+  import_contract_version smallint;
   entity_kind text;
   related_kind text;
   reviewer text := session_user::text;
@@ -1070,6 +1071,21 @@ begin
       errcode = '22023',
       message = 'Unknown source assertion';
   end if;
+
+  select import_run.contract_version
+  into import_contract_version
+  from catalog.source_records as source_record
+  left join catalog.import_runs as import_run
+    on import_run.id = source_record.import_run_id
+   and import_run.source_id = source_record.source_id
+  where source_record.id = assertion_row.source_record_id;
+
+  if coalesce(import_contract_version, 1) = 2 then
+    raise exception using
+      errcode = '22023',
+      message = 'Version-2 assertions require knowledge review';
+  end if;
+
   if p_decision not in ('accepted', 'rejected')
      or char_length(coalesce(p_note, '')) > 1000 then
     raise exception using

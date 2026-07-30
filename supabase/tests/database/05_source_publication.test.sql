@@ -155,7 +155,7 @@ select $batch$
           },
           "subjectExternalKey": "child",
           "relatedExternalKey": "historical-origin",
-          "relationship": "historical_origin",
+          "relationship": "selection_from",
           "position": null
         },
         {
@@ -356,7 +356,7 @@ select is(
   'an adapter import alone publishes no public catalog row'
 );
 
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -368,9 +368,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'synthetic canonical review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -382,9 +383,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'synthetic alias review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -396,9 +398,10 @@ select private.review_source_assertion(
   'rejected',
   null,
   null,
+  null,
   'synthetic rejection'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -410,9 +413,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000002',
+  'single_source',
   'synthetic parent one review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -424,9 +428,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000003',
+  'single_source',
   'synthetic parent two review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -438,9 +443,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000004',
+  'single_source',
   'synthetic historical origin review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -450,11 +456,12 @@ select private.review_source_assertion(
       and assertion.assertion_index = 6
   ),
   'accepted',
-  '51000000-0000-4000-8000-000000000001',
+  '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic THC review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -464,11 +471,12 @@ select private.review_source_assertion(
       and assertion.assertion_index = 7
   ),
   'accepted',
-  '51000000-0000-4000-8000-000000000001',
+  '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic CBD review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -480,9 +488,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000002',
   null,
+  'single_source',
   'synthetic parent name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -494,9 +503,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000003',
   null,
+  'single_source',
   'synthetic parent name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -508,9 +518,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000004',
   null,
+  'single_source',
   'synthetic origin name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -522,9 +533,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic product name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -536,6 +548,7 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000005',
   '51000000-0000-4000-8000-000000000001',
+  'single_source',
   'synthetic flower mapping review'
 );
 
@@ -588,19 +601,19 @@ select is(
   (
     select sourced_thc_label
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
   '22.4 %',
-  'reviewed sourced THC remains distinct from community values'
+  'reviewed product THC remains distinct from community values'
 );
 select is(
   (
     select sourced_cbd_label
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
   '0.8 %',
-  'reviewed sourced CBD remains distinct from community values'
+  'reviewed product CBD remains distinct from community values'
 );
 select ok(
   (
@@ -666,18 +679,21 @@ select ok(
       and sourced_value_evidence #>> '{0,attribution}'
         = 'Synthetic publication attribution'
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
-  'sourced labels carry public citation metadata'
+  'sourced product labels carry public citation metadata'
 );
-select is(
+select ok(
   (
-    select sourced_value_evidence #>> '{0,citationUrl}'
+    select not exists (
+      select 1
+      from jsonb_array_elements(sourced_value_evidence) as evidence
+      where evidence ->> 'citationUrl' = 'http://example.invalid/product'
+    )
     from api.catalog_references
     where id = '51000000-0000-4000-8000-000000000005'
   ),
-  null,
-  'unsafe non-HTTPS retrieval references are not published'
+  'unsafe non-HTTPS product references are not copied into measurement evidence'
 );
 select ok(
   exists (
@@ -695,9 +711,9 @@ select ok(
   (
     select sourced_thc_label not like '%71%'
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
-  'a flower value above 70 is absent from the public label'
+  'a flower value above 70 is absent from the public product label'
 );
 
 select lives_ok(
@@ -755,7 +771,7 @@ $conflict$ as conflict_batch
 set local role source_ingestor;
 select * from private.record_source_import(:'conflict_batch'::jsonb);
 reset role;
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -767,6 +783,7 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000003',
+  'disputed',
   'synthetic conflicting parent'
 );
 
