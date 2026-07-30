@@ -7,6 +7,49 @@ select has_table('catalog', 'source_records', 'immutable source records exist in
 select has_table('catalog', 'normalized_assertions', 'normalized assertions exist internally');
 select has_table('catalog', 'review_cases', 'source review cases exist internally');
 select has_table('catalog', 'assertion_reviews', 'assertion reviews exist internally');
+select has_table(
+  'catalog',
+  'knowledge_publication_snapshots',
+  'immutable knowledge publication snapshots exist internally'
+);
+select has_table(
+  'catalog',
+  'knowledge_current_snapshot',
+  'the current knowledge snapshot pointer exists internally'
+);
+select has_table(
+  'catalog',
+  'knowledge_snapshot_nodes',
+  'immutable knowledge snapshot nodes exist internally'
+);
+select has_table(
+  'catalog',
+  'knowledge_snapshot_claims',
+  'immutable knowledge snapshot claims exist internally'
+);
+select has_table(
+  'catalog',
+  'knowledge_snapshot_edges',
+  'immutable knowledge snapshot edges exist internally'
+);
+select has_column(
+  'catalog',
+  'import_runs',
+  'contract_version',
+  'source import runs record their adapter contract'
+);
+select has_column(
+  'catalog',
+  'source_records',
+  'import_run_id',
+  'source records can link to their import run'
+);
+select has_column(
+  'catalog',
+  'assertion_reviews',
+  'evidence_status',
+  'assertion reviews record evidence status'
+);
 
 select ok(
   exists (select 1 from pg_roles where rolname = 'source_ingestor'),
@@ -81,6 +124,56 @@ insert into catalog.sources(
   'inactive'
 );
 
+insert into catalog.entities(id, kind, canonical_name, published) values
+  (
+    '30000000-0000-4000-8000-000000000001',
+    'origin_population',
+    'Synthetic origin population node',
+    false
+  ),
+  (
+    '30000000-0000-4000-8000-000000000002',
+    'cultivar',
+    'Synthetic cultivar node',
+    false
+  ),
+  (
+    '30000000-0000-4000-8000-000000000003',
+    'genetic_sample',
+    'Synthetic genetic sample node',
+    false
+  ),
+  (
+    '30000000-0000-4000-8000-000000000004',
+    'product',
+    'Synthetic product node',
+    false
+  );
+
+select is(
+  (
+    select count(*)
+    from catalog.entities
+    where id between
+      '30000000-0000-4000-8000-000000000001'::uuid
+      and '30000000-0000-4000-8000-000000000004'::uuid
+  )::bigint,
+  4::bigint,
+  'all four knowledge graph entity kinds are accepted'
+);
+
+select throws_ok(
+  $$insert into catalog.entities(id, kind, canonical_name, published) values (
+      '30000000-0000-4000-8000-000000000005',
+      'synthetic_invalid_kind',
+      'Synthetic invalid node',
+      false
+    )$$,
+  '23514',
+  null,
+  'a fifth entity kind is rejected'
+);
+
 select throws_ok(
   $$insert into catalog.sources(
       id, display_name, owner_name, access_method, permitted_frequency,
@@ -94,6 +187,32 @@ select throws_ok(
   '23514',
   null,
   'source activation status is closed'
+);
+
+insert into catalog.import_runs(
+  id,
+  source_id,
+  started_at,
+  completed_at,
+  cursor,
+  adapter_errors
+) values (
+  '30500000-0000-4000-8000-000000000001',
+  'synthetic-schema-source',
+  '2026-07-28T17:59:00Z',
+  '2026-07-28T17:59:01Z',
+  null,
+  '[]'::jsonb
+);
+
+select is(
+  (
+    select contract_version
+    from catalog.import_runs
+    where id = '30500000-0000-4000-8000-000000000001'
+  ),
+  1::smallint,
+  'legacy import runs retain contract version 1'
 );
 
 insert into catalog.source_records(
@@ -130,6 +249,16 @@ insert into catalog.source_records(
   'approved',
   false,
   'Synthetic attribution'
+);
+
+select ok(
+  exists (
+    select 1
+    from catalog.source_records
+    where id = '31000000-0000-4000-8000-000000000001'
+      and import_run_id is null
+  ),
+  'synthetic legacy source rows remain queryable without fabricated locators'
 );
 
 select throws_ok(
@@ -224,6 +353,727 @@ select throws_ok(
   '23514',
   null,
   'an accepted review requires a canonical entity'
+);
+
+select ok(
+  (
+    select evidence_status is null
+    from catalog.assertion_reviews
+    where assertion_id = '32000000-0000-4000-8000-000000000001'
+  ),
+  'rejected legacy reviews retain a null evidence status'
+);
+
+select ok(
+  private.source_assertion_payload_valid(
+    assertion_kind,
+    payload
+  ),
+  pg_catalog.format(
+    'valid version-2 %s payload is accepted',
+    assertion_kind
+  )
+)
+from (
+  values
+    (
+      'entity_kind',
+      '{
+        "kind":"entity_kind",
+        "trace":{"sourceLocator":"$.synthetic.entityKind","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "entityKind":"cultivar"
+      }'::jsonb
+    ),
+    (
+      'traditional_classification',
+      '{
+        "kind":"traditional_classification",
+        "trace":{"sourceLocator":"$.synthetic.classification","extractionMethod":"manual"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "classification":"hybrid"
+      }'::jsonb
+    ),
+    (
+      'origin_region',
+      '{
+        "kind":"origin_region",
+        "trace":{"sourceLocator":"$.synthetic.origin","extractionMethod":"ai_assisted"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "regionName":"Synthetic Test Region",
+        "regionCode":"ZZ"
+      }'::jsonb
+    ),
+    (
+      'era',
+      '{
+        "kind":"era",
+        "trace":{"sourceLocator":"$.synthetic.era","extractionMethod":"manual"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "startYear":1900,
+        "endYear":2000,
+        "label":"Synthetic test era"
+      }'::jsonb
+    ),
+    (
+      'sample_reference',
+      '{
+        "kind":"sample_reference",
+        "trace":{"sourceLocator":"$.synthetic.sample","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "sampleIdentifier":"SYNTHETIC-SAMPLE-001",
+        "datasetName":"Synthetic test dataset",
+        "datasetVersion":"test-v1",
+        "submitter":"Synthetic submitter",
+        "laboratory":"Synthetic laboratory",
+        "sampledAt":"2026-07-28T18:00:00.000Z"
+      }'::jsonb
+    ),
+    (
+      'genetic_relation',
+      '{
+        "kind":"genetic_relation",
+        "trace":{"sourceLocator":"$.synthetic.geneticRelation","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "relatedExternalKey":"synthetic-graph-record-002",
+        "relationship":"genetic_similarity",
+        "method":"Synthetic comparison method",
+        "datasetName":"Synthetic test dataset",
+        "datasetVersion":"test-v1",
+        "metricName":"Synthetic similarity score",
+        "value":0.75,
+        "unit":"ratio"
+      }'::jsonb
+    ),
+    (
+      'product_market',
+      '{
+        "kind":"product_market",
+        "trace":{"sourceLocator":"$.synthetic.market","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "countryCode":"ZZ",
+        "medical":true
+      }'::jsonb
+    )
+) as valid_assertion(assertion_kind, payload);
+
+select ok(
+  not private.source_assertion_payload_valid(
+    assertion_kind,
+    payload || '{"unexpected":"synthetic"}'::jsonb
+  ),
+  pg_catalog.format(
+    'unknown fields invalidate version-2 %s payloads',
+    assertion_kind
+  )
+)
+from (
+  values
+    (
+      'entity_kind',
+      '{
+        "kind":"entity_kind",
+        "trace":{"sourceLocator":"$.synthetic.entityKind","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "entityKind":"cultivar"
+      }'::jsonb
+    ),
+    (
+      'traditional_classification',
+      '{
+        "kind":"traditional_classification",
+        "trace":{"sourceLocator":"$.synthetic.classification","extractionMethod":"manual"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "classification":"hybrid"
+      }'::jsonb
+    ),
+    (
+      'origin_region',
+      '{
+        "kind":"origin_region",
+        "trace":{"sourceLocator":"$.synthetic.origin","extractionMethod":"ai_assisted"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "regionName":"Synthetic Test Region",
+        "regionCode":"ZZ"
+      }'::jsonb
+    ),
+    (
+      'era',
+      '{
+        "kind":"era",
+        "trace":{"sourceLocator":"$.synthetic.era","extractionMethod":"manual"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "startYear":1900,
+        "endYear":2000,
+        "label":"Synthetic test era"
+      }'::jsonb
+    ),
+    (
+      'sample_reference',
+      '{
+        "kind":"sample_reference",
+        "trace":{"sourceLocator":"$.synthetic.sample","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "sampleIdentifier":"SYNTHETIC-SAMPLE-001",
+        "datasetName":"Synthetic test dataset",
+        "datasetVersion":"test-v1",
+        "submitter":"Synthetic submitter",
+        "laboratory":"Synthetic laboratory",
+        "sampledAt":"2026-07-28T18:00:00.000Z"
+      }'::jsonb
+    ),
+    (
+      'genetic_relation',
+      '{
+        "kind":"genetic_relation",
+        "trace":{"sourceLocator":"$.synthetic.geneticRelation","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "relatedExternalKey":"synthetic-graph-record-002",
+        "relationship":"genetic_similarity",
+        "method":"Synthetic comparison method",
+        "datasetName":"Synthetic test dataset",
+        "datasetVersion":"test-v1",
+        "metricName":"Synthetic similarity score",
+        "value":0.75,
+        "unit":"ratio"
+      }'::jsonb
+    ),
+    (
+      'product_market',
+      '{
+        "kind":"product_market",
+        "trace":{"sourceLocator":"$.synthetic.market","extractionMethod":"structured"},
+        "subjectExternalKey":"synthetic-graph-record-001",
+        "countryCode":"ZZ",
+        "medical":true
+      }'::jsonb
+    )
+) as invalid_assertion(assertion_kind, payload);
+
+select $batch$
+{
+  "contractVersion": 2,
+  "sourceId": "synthetic-schema-source",
+  "startedAt": "2026-07-28T18:10:00.000Z",
+  "completedAt": "2026-07-28T18:10:01.000Z",
+  "cursor": null,
+  "records": [{
+    "externalRecordKey": "synthetic-graph-record-001",
+    "upstreamState": "present",
+    "retrievedAt": "2026-07-28T18:10:01.000Z",
+    "sourceVersion": "synthetic-graph-fixture-1",
+    "evidence": {
+      "kind": "checksum",
+      "algorithm": "sha256",
+      "digest": "9999999999999999999999999999999999999999999999999999999999999999",
+      "retrievalReference": "https://example.invalid/synthetic-graph-record-001"
+    },
+    "validFrom": null,
+    "validTo": null,
+    "assertions": [
+      {
+        "kind": "entity_kind",
+        "trace": {
+          "sourceLocator": "$.synthetic.entityKind",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "entityKind": "cultivar"
+      },
+      {
+        "kind": "traditional_classification",
+        "trace": {
+          "sourceLocator": "$.synthetic.classification",
+          "extractionMethod": "manual"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "classification": "hybrid"
+      },
+      {
+        "kind": "origin_region",
+        "trace": {
+          "sourceLocator": "$.synthetic.origin",
+          "extractionMethod": "ai_assisted"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "regionName": "Synthetic Test Region",
+        "regionCode": "ZZ"
+      },
+      {
+        "kind": "era",
+        "trace": {
+          "sourceLocator": "$.synthetic.era",
+          "extractionMethod": "manual"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "startYear": 1900,
+        "endYear": 2000,
+        "label": "Synthetic test era"
+      },
+      {
+        "kind": "sample_reference",
+        "trace": {
+          "sourceLocator": "$.synthetic.sample",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "sampleIdentifier": "SYNTHETIC-SAMPLE-001",
+        "datasetName": "Synthetic test dataset",
+        "datasetVersion": "test-v1",
+        "submitter": "Synthetic submitter",
+        "laboratory": "Synthetic laboratory",
+        "sampledAt": "2026-07-28T18:00:00.000Z"
+      },
+      {
+        "kind": "genetic_relation",
+        "trace": {
+          "sourceLocator": "$.synthetic.geneticRelation",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "relatedExternalKey": "synthetic-graph-record-002",
+        "relationship": "genetic_similarity",
+        "method": "Synthetic comparison method",
+        "datasetName": "Synthetic test dataset",
+        "datasetVersion": "test-v1",
+        "metricName": "Synthetic similarity score",
+        "value": 0.75,
+        "unit": "ratio"
+      },
+      {
+        "kind": "product_market",
+        "trace": {
+          "sourceLocator": "$.synthetic.market",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-graph-record-001",
+        "countryCode": "ZZ",
+        "medical": true
+      }
+    ]
+  }],
+  "errors": []
+}
+$batch$ as graph_batch
+\gset
+
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    (:'graph_batch'::jsonb - 'contractVersion')::text
+  ),
+  '22023',
+  null,
+  'a missing adapter contract version is rejected'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'graph_batch'::jsonb,
+      '{contractVersion}',
+      '1'::jsonb
+    )::text
+  ),
+  '22023',
+  null,
+  'adapter contract versions other than 2 are rejected'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    (
+      :'graph_batch'::jsonb
+      #- '{records,0,assertions,0,trace}'
+    )::text
+  ),
+  '22023',
+  null,
+  'a version-2 assertion without trace is rejected'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'graph_batch'::jsonb,
+      '{records,0,assertions,0,trace}',
+      (
+        :'graph_batch'::jsonb
+        #> '{records,0,assertions,0,trace}'
+      ) || '{"unexpected":"synthetic"}'::jsonb
+    )::text
+  ),
+  '22023',
+  null,
+  'unknown version-2 trace keys are rejected'
+);
+
+select *
+from private.record_source_import(:'graph_batch'::jsonb);
+
+select ok(
+  not exists (
+    select 1
+    from catalog.source_records source_record
+    left join catalog.import_runs import_run
+      on import_run.id = source_record.import_run_id
+    where source_record.source_id = 'synthetic-schema-source'
+      and source_record.external_record_key = 'synthetic-graph-record-001'
+      and (
+        source_record.import_run_id is null
+        or import_run.contract_version <> 2
+      )
+  ),
+  'every version-2 source record links to a version-2 import run'
+);
+
+select is(
+  (
+    select count(*)
+    from catalog.normalized_assertions
+    where source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+  )::bigint,
+  7::bigint,
+  'all seven new assertion kinds are stored'
+);
+
+insert into catalog.assertion_reviews(
+  assertion_id,
+  decision,
+  entity_id,
+  related_entity_id,
+  reviewer_name,
+  reviewed_at,
+  note,
+  evidence_status
+)
+select
+  assertion.id,
+  'accepted',
+  '30000000-0000-4000-8000-000000000002',
+  null,
+  'synthetic-schema-reviewer',
+  now(),
+  'Synthetic evidence-state acceptance',
+  evidence_state.evidence_status
+from (
+  values
+    (0, 'confirmed'),
+    (1, 'single_source'),
+    (2, 'disputed'),
+    (3, 'historical'),
+    (4, 'unknown'),
+    (5, 'retracted')
+) as evidence_state(assertion_index, evidence_status)
+join catalog.normalized_assertions assertion
+  on assertion.source_record_id = (
+    select id
+    from catalog.source_records
+    where source_id = 'synthetic-schema-source'
+      and external_record_key = 'synthetic-graph-record-001'
+  )
+ and assertion.assertion_index = evidence_state.assertion_index;
+
+select is(
+  (
+    select count(distinct review.evidence_status)
+    from catalog.assertion_reviews review
+    join catalog.normalized_assertions assertion
+      on assertion.id = review.assertion_id
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and review.decision = 'accepted'
+  )::bigint,
+  6::bigint,
+  'all six accepted evidence states are allowed'
+);
+
+select throws_ok(
+  $$insert into catalog.assertion_reviews(
+      assertion_id, decision, entity_id, related_entity_id,
+      reviewer_name, reviewed_at, note, evidence_status
+    )
+    select
+      assertion.id,
+      'accepted',
+      '30000000-0000-4000-8000-000000000002',
+      null,
+      'synthetic-schema-reviewer',
+      now(),
+      'Synthetic invalid missing evidence state',
+      null
+    from catalog.normalized_assertions assertion
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and assertion.assertion_index = 6$$,
+  '23514',
+  null,
+  'accepted reviews require an evidence state'
+);
+
+select throws_ok(
+  $$insert into catalog.assertion_reviews(
+      assertion_id, decision, entity_id, related_entity_id,
+      reviewer_name, reviewed_at, note, evidence_status
+    )
+    select
+      assertion.id,
+      'accepted',
+      '30000000-0000-4000-8000-000000000002',
+      null,
+      'synthetic-schema-reviewer',
+      now(),
+      'Synthetic invalid evidence state',
+      'synthetic_invalid'
+    from catalog.normalized_assertions assertion
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and assertion.assertion_index = 6$$,
+  '23514',
+  null,
+  'accepted reviews reject evidence states outside the closed set'
+);
+
+select throws_ok(
+  $$insert into catalog.assertion_reviews(
+      assertion_id, decision, entity_id, related_entity_id,
+      reviewer_name, reviewed_at, note, evidence_status
+    )
+    select
+      assertion.id,
+      'rejected',
+      null,
+      null,
+      'synthetic-schema-reviewer',
+      now(),
+      'Synthetic invalid rejected evidence state',
+      'confirmed'
+    from catalog.normalized_assertions assertion
+    where assertion.source_record_id = (
+      select id
+      from catalog.source_records
+      where source_id = 'synthetic-schema-source'
+        and external_record_key = 'synthetic-graph-record-001'
+    )
+      and assertion.assertion_index = 6$$,
+  '23514',
+  null,
+  'rejected reviews require a null evidence state'
+);
+
+insert into catalog.knowledge_publication_snapshots(
+  id,
+  previous_snapshot_id,
+  published_by,
+  published_at,
+  assertion_count
+) values
+  (
+    '34000000-0000-4000-8000-000000000001',
+    null,
+    'synthetic-schema-reviewer',
+    '2026-07-28T18:20:00Z',
+    2
+  ),
+  (
+    '34000000-0000-4000-8000-000000000002',
+    '34000000-0000-4000-8000-000000000001',
+    'synthetic-schema-reviewer',
+    '2026-07-28T18:21:00Z',
+    0
+  );
+
+insert into catalog.knowledge_snapshot_nodes(
+  snapshot_id,
+  entity_id,
+  kind,
+  canonical_name
+) values (
+  '34000000-0000-4000-8000-000000000001',
+  '30000000-0000-4000-8000-000000000002',
+  'cultivar',
+  'Synthetic cultivar node'
+);
+
+insert into catalog.knowledge_snapshot_claims(
+  snapshot_id,
+  assertion_id,
+  entity_id,
+  claim_kind,
+  value,
+  evidence_status,
+  evidence
+)
+select
+  '34000000-0000-4000-8000-000000000001',
+  assertion.id,
+  '30000000-0000-4000-8000-000000000002',
+  'entity_kind',
+  '"cultivar"'::jsonb,
+  'confirmed',
+  '{"sourceLocator":"$.synthetic.entityKind"}'::jsonb
+from catalog.normalized_assertions assertion
+where assertion.source_record_id = (
+  select id
+  from catalog.source_records
+  where source_id = 'synthetic-schema-source'
+    and external_record_key = 'synthetic-graph-record-001'
+)
+  and assertion.assertion_index = 0;
+
+insert into catalog.knowledge_snapshot_edges(
+  snapshot_id,
+  assertion_id,
+  from_entity_id,
+  to_entity_id,
+  layer,
+  relationship,
+  position,
+  evidence_status,
+  details,
+  evidence
+)
+select
+  '34000000-0000-4000-8000-000000000001',
+  assertion.id,
+  '30000000-0000-4000-8000-000000000002',
+  '30000000-0000-4000-8000-000000000003',
+  'genetic_similarity',
+  'genetic_similarity',
+  null,
+  'single_source',
+  '{"synthetic":true}'::jsonb,
+  '{"sourceLocator":"$.synthetic.geneticRelation"}'::jsonb
+from catalog.normalized_assertions assertion
+where assertion.source_record_id = (
+  select id
+  from catalog.source_records
+  where source_id = 'synthetic-schema-source'
+    and external_record_key = 'synthetic-graph-record-001'
+)
+  and assertion.assertion_index = 5;
+
+insert into catalog.knowledge_current_snapshot(singleton, snapshot_id)
+values (
+  true,
+  '34000000-0000-4000-8000-000000000001'
+);
+
+select lives_ok(
+  $$update catalog.knowledge_current_snapshot
+    set snapshot_id = '34000000-0000-4000-8000-000000000002'
+    where singleton$$,
+  'the singleton pointer may move to a newer immutable snapshot'
+);
+
+select ok(
+  (
+    select count(*) = 1
+      and bool_and(snapshot_id =
+        '34000000-0000-4000-8000-000000000002'::uuid
+      )
+    from catalog.knowledge_current_snapshot
+  ),
+  'the current snapshot remains a single row after moving'
+);
+
+select throws_ok(
+  $$insert into catalog.knowledge_current_snapshot(singleton, snapshot_id)
+    values (
+      false,
+      '34000000-0000-4000-8000-000000000001'
+    )$$,
+  '23514',
+  null,
+  'a second current-snapshot pointer cannot be created'
+);
+
+select throws_ok(
+  $$update catalog.knowledge_publication_snapshots
+    set assertion_count = 3
+    where id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot metadata cannot be updated'
+);
+
+select throws_ok(
+  $$delete from catalog.knowledge_publication_snapshots
+    where id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot metadata cannot be deleted'
+);
+
+select throws_ok(
+  $$update catalog.knowledge_snapshot_nodes
+    set canonical_name = 'Synthetic rewritten node'
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot nodes cannot be updated'
+);
+
+select throws_ok(
+  $$delete from catalog.knowledge_snapshot_nodes
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot nodes cannot be deleted'
+);
+
+select throws_ok(
+  $$update catalog.knowledge_snapshot_claims
+    set evidence_status = 'retracted'
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot claims cannot be updated'
+);
+
+select throws_ok(
+  $$delete from catalog.knowledge_snapshot_claims
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot claims cannot be deleted'
+);
+
+select throws_ok(
+  $$update catalog.knowledge_snapshot_edges
+    set evidence_status = 'retracted'
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot edges cannot be updated'
+);
+
+select throws_ok(
+  $$delete from catalog.knowledge_snapshot_edges
+    where snapshot_id = '34000000-0000-4000-8000-000000000001'$$,
+  '55000',
+  'knowledge publication snapshots are immutable',
+  'completed snapshot edges cannot be deleted'
 );
 
 select * from finish();

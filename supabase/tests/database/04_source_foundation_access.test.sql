@@ -60,6 +60,66 @@ select ok(
 );
 
 select ok(
+  not exists (
+    select 1
+    from unnest(
+      array[
+        'public',
+        'anon',
+        'authenticated',
+        'service_role',
+        'source_ingestor',
+        'source_reviewer'
+      ]
+    ) as role_name(name)
+    cross join unnest(
+      array[
+        'catalog.knowledge_publication_snapshots',
+        'catalog.knowledge_current_snapshot',
+        'catalog.knowledge_snapshot_nodes',
+        'catalog.knowledge_snapshot_claims',
+        'catalog.knowledge_snapshot_edges'
+      ]
+    ) as relation_name(name)
+    cross join unnest(
+      array[
+        'SELECT',
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'TRUNCATE',
+        'REFERENCES',
+        'TRIGGER'
+      ]
+    ) as privilege_name(name)
+    where has_table_privilege(
+      role_name.name,
+      relation_name.name,
+      privilege_name.name
+    )
+  ),
+  'knowledge snapshot tables expose no direct privileges'
+);
+
+select ok(
+  (
+    select bool_and(relation.relrowsecurity)
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'catalog'
+      and relation.relname in (
+        'knowledge_publication_snapshots',
+        'knowledge_current_snapshot',
+        'knowledge_snapshot_nodes',
+        'knowledge_snapshot_claims',
+        'knowledge_snapshot_edges'
+      )
+  ),
+  'knowledge snapshot tables have row-level security enabled'
+);
+
+select ok(
   has_function_privilege(
     'source_ingestor',
     'private.record_source_import(jsonb)',
@@ -200,6 +260,7 @@ select ok(
 
 select $batch$
   {
+    "contractVersion": 2,
     "sourceId": "synthetic-access-source",
     "startedAt": "2026-07-28T18:00:00.000Z",
     "completedAt": "2026-07-28T18:00:01.000Z",
@@ -219,6 +280,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.access.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "synthetic-access-record",
         "name": "Synthetic access record",
         "language": "en"
@@ -320,6 +385,15 @@ select is(
 );
 select is(
   (
+    select evidence_status
+    from catalog.assertion_reviews
+    where assertion_id = :'access_assertion_id'::uuid
+  ),
+  'single_source',
+  'legacy review capability records single-source evidence'
+);
+select is(
+  (
     select count(*)
     from catalog.review_cases
     where assertion_id = (
@@ -335,6 +409,7 @@ select is(
 
 select $batch$
   {
+    "contractVersion": 2,
     "sourceId": "synthetic-access-source",
     "startedAt": "2026-07-28T18:05:00.000Z",
     "completedAt": "2026-07-28T18:05:01.000Z",

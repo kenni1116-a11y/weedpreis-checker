@@ -71,6 +71,7 @@ insert into catalog.entities(id, kind, canonical_name, published) values
 
 select $batch$
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-publication-source",
   "startedAt": "2026-07-28T18:00:00.000Z",
   "completedAt": "2026-07-28T18:00:01.000Z",
@@ -92,68 +93,111 @@ select $batch$
       "assertions": [
         {
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "name": "Synthetic Gorilla Skittlez",
           "language": "en"
         },
         {
           "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.aliases[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "name": "Synthetic G-Skittlez",
-          "language": "en"
+          "language": "en",
+          "aliasType": "market",
+          "market": "synthetic-test-market"
         },
         {
           "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.aliases[1]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
           "name": "Rejected private nickname",
-          "language": "en"
+          "language": "en",
+          "aliasType": "other",
+          "market": null
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "parent-one",
+          "relatedExternalKey": "parent-one",
           "relationship": "reported_parent",
           "position": 1
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[1]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "parent-two",
+          "relatedExternalKey": "parent-two",
           "relationship": "reported_parent",
           "position": 2
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[2]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "historical-origin",
+          "relatedExternalKey": "historical-origin",
           "relationship": "historical_origin",
           "position": null
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "analyte": "thc",
           "value": 22.4,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-BATCH-001",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[1]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "analyte": "cbd",
           "value": 0.8,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-BATCH-001",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[2]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
           "analyte": "thc",
           "value": 71,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-OVER-LIMIT",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         }
       ]
@@ -173,6 +217,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.parentOne.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "parent-one",
         "name": "Synthetic Gorilla Glue",
         "language": "en"
@@ -193,6 +241,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.parentTwo.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "parent-two",
         "name": "Synthetic Skittlez",
         "language": "en"
@@ -213,6 +265,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.historicalOrigin.name",
+          "extractionMethod": "manual"
+        },
         "subjectExternalKey": "historical-origin",
         "name": "Synthetic Afghani",
         "language": "en"
@@ -234,12 +290,20 @@ select $batch$
       "assertions": [
         {
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.product.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "product",
           "name": "Synthetic Gorilla Skittlez 22/1",
           "language": "en"
         },
         {
           "kind": "product_cultivar",
+          "trace": {
+            "sourceLocator": "$.synthetic.product.cultivar",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "product",
           "cultivarExternalKey": "child",
           "productForm": "flower"
@@ -261,6 +325,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.unreviewed.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "unreviewed",
         "name": "Must remain private",
         "language": "en"
@@ -649,6 +717,7 @@ select is(
 
 select $conflict$
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-publication-source",
   "startedAt": "2026-07-28T18:01:00.000Z",
   "completedAt": "2026-07-28T18:01:01.000Z",
@@ -668,8 +737,12 @@ select $conflict$
     "validTo": null,
     "assertions": [{
       "kind": "lineage",
+      "trace": {
+        "sourceLocator": "$.synthetic.conflict.lineage[0]",
+        "extractionMethod": "manual"
+      },
       "subjectExternalKey": "child",
-      "parentExternalKey": "parent-two",
+      "relatedExternalKey": "parent-two",
       "relationship": "reported_parent",
       "position": 1
     }]

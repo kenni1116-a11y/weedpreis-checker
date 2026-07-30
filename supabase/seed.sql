@@ -111,6 +111,7 @@ select *
 from private.record_source_import(
   $seed$
   {
+    "contractVersion": 2,
     "sourceId": "synthetic-contract-source",
     "startedAt": "2026-07-28T12:00:00.000Z",
     "completedAt": "2026-07-28T12:00:01.000Z",
@@ -132,34 +133,56 @@ from private.record_source_import(
         "assertions": [
           {
             "kind": "name",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedChild.name",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-child",
             "name": "Test-Cultivar – keine Echtdaten",
             "language": "de"
           },
           {
             "kind": "alias",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedChild.aliases[0]",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-child",
             "name": "Test-Hybrid – keine Echtdaten",
-            "language": "de"
+            "language": "de",
+            "aliasType": "other",
+            "market": null
           },
           {
             "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedChild.lineage[0]",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-child",
-            "parentExternalKey": "seed-parent-a",
+            "relatedExternalKey": "seed-parent-a",
             "relationship": "reported_parent",
             "position": 1
           },
           {
             "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedChild.lineage[1]",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-child",
-            "parentExternalKey": "seed-parent-b",
+            "relatedExternalKey": "seed-parent-b",
             "relationship": "reported_parent",
             "position": 2
           },
           {
             "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedChild.lineage[2]",
+              "extractionMethod": "manual"
+            },
             "subjectExternalKey": "seed-child",
-            "parentExternalKey": "seed-additional-origin",
+            "relatedExternalKey": "seed-additional-origin",
             "relationship": "historical_origin",
             "position": null
           }
@@ -180,6 +203,10 @@ from private.record_source_import(
         "validTo": null,
         "assertions": [{
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.seedParentA.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "seed-parent-a",
           "name": "Test-Ursprung A – keine Echtdaten",
           "language": "de"
@@ -200,6 +227,10 @@ from private.record_source_import(
         "validTo": null,
         "assertions": [{
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.seedParentB.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "seed-parent-b",
           "name": "Test-Ursprung B – keine Echtdaten",
           "language": "de"
@@ -220,6 +251,10 @@ from private.record_source_import(
         "validTo": null,
         "assertions": [{
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.seedAdditionalOrigin.name",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "seed-additional-origin",
           "name": "Test-Zusatzherkunft – keine Echtdaten",
           "language": "de"
@@ -241,12 +276,20 @@ from private.record_source_import(
         "assertions": [
           {
             "kind": "name",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedProduct.name",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-product",
             "name": "Testprodukt – keine Echtdaten",
             "language": "de"
           },
           {
             "kind": "product_cultivar",
+            "trace": {
+              "sourceLocator": "$.synthetic.seedProduct.cultivar",
+              "extractionMethod": "structured"
+            },
             "subjectExternalKey": "seed-product",
             "cultivarExternalKey": "seed-child",
             "productForm": "flower"
