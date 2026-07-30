@@ -39,6 +39,7 @@ describe('createSupabaseKnowledgeRepository', () => {
     })
 
     expect(rpc).toHaveBeenCalledWith('get_published_knowledge_graph')
+    expect(result.abortSignal).not.toHaveBeenCalled()
   })
 
   it('returns null when no knowledge graph has been published', async () => {
@@ -71,7 +72,10 @@ describe('createSupabaseKnowledgeRepository', () => {
       client: { rpc: vi.fn(() => result) },
     })
 
-    await expect(repository.loadGraph()).rejects.toThrow(
+    const error = await repository.loadGraph().catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe(
       'Der Weedypedia-Datenstand ist derzeit nicht verfügbar.',
     )
   })
@@ -110,5 +114,36 @@ describe('createSupabaseKnowledgeRepository', () => {
 
     await expect(load).rejects.toMatchObject({ name: 'AbortError' })
     expect(pending.abortSignal).toHaveBeenCalledWith(controller.signal)
+  })
+
+  it('prioritizes a post-RPC abort over a Supabase availability error', async () => {
+    const controller = new AbortController()
+    let resolveResult!: (value: {
+      data: unknown
+      error: { code?: string; message: string }
+    }) => void
+    const promise = new Promise<{
+      data: unknown
+      error: { code?: string; message: string }
+    }>((resolve) => {
+      resolveResult = resolve
+    })
+    const pending = {
+      abortSignal: vi.fn(),
+      then: promise.then.bind(promise),
+    }
+    pending.abortSignal.mockReturnValue(pending)
+    const repository = createSupabaseKnowledgeRepository({
+      client: { rpc: vi.fn(() => pending) },
+    })
+
+    const load = repository.loadGraph(controller.signal)
+    controller.abort()
+    resolveResult({
+      data: null,
+      error: { code: '57014', message: 'query cancelled' },
+    })
+
+    await expect(load).rejects.toMatchObject({ name: 'AbortError' })
   })
 })
