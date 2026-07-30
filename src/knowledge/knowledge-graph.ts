@@ -88,7 +88,9 @@ function record(value: unknown, description: string, keys: readonly string[]): U
 }
 
 function text(value: unknown, description: string, maximumLength: number): string {
-  if (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > maximumLength) invalid(description)
+  if (typeof value !== 'string' || value.trim() !== value) invalid(description)
+  const length = [...value].length
+  if (length < 1 || length > maximumLength) invalid(description)
   return value
 }
 
@@ -110,7 +112,7 @@ function choice<T extends readonly string[]>(value: unknown, description: string
 function uuid(value: unknown, description: string): string {
   const result = text(value, description, 36)
   if (!uuidPattern.test(result)) invalid(description)
-  return result
+  return result.toLowerCase()
 }
 
 function timestamp(value: unknown, description: string): string {
@@ -283,6 +285,7 @@ function validateEdges(edges: readonly KnowledgeEdge[], nodesById: ReadonlyMap<s
     const from = nodesById.get(edge.fromNodeId)
     const to = edge.toNodeId === null ? null : nodesById.get(edge.toNodeId)
     if (!from || (edge.toNodeId !== null && !to)) invalid('edge reference')
+    if (edge.toNodeId !== null && edge.fromNodeId === edge.toNodeId) invalid('edge relationship')
     if (edge.layer === 'documented_lineage') {
       if (edge.relationship === 'unknown_parent') {
         if (from.kind !== 'cultivar' || to !== null) invalid('edge relationship')

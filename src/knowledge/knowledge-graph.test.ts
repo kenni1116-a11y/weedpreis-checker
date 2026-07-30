@@ -4,7 +4,8 @@ import { mapKnowledgeGraph } from './knowledge-graph'
 const ids = {
   snapshot: '71000000-0000-4000-8000-000000000001',
   population: '71000000-0000-4000-8000-000000000002',
-  cultivar: '71000000-0000-4000-8000-000000000003',
+  populationTwo: '71000000-0000-4000-8000-000000000008',
+  cultivar: '7a000000-0000-4000-8000-000000000003',
   cultivarParent: '71000000-0000-4000-8000-000000000004',
   sample: '71000000-0000-4000-8000-000000000005',
   sampleMatch: '71000000-0000-4000-8000-000000000006',
@@ -26,6 +27,7 @@ const validGraph = {
   publishedAt: '2026-07-30T12:00:00.000Z',
   nodes: [
     { id: ids.population, kind: 'origin_population', canonicalName: 'Population' },
+    { id: ids.populationTwo, kind: 'origin_population', canonicalName: 'Second population' },
     { id: ids.cultivar, kind: 'cultivar', canonicalName: 'Cultivar' },
     { id: ids.cultivarParent, kind: 'cultivar', canonicalName: 'Parent cultivar' },
     { id: ids.sample, kind: 'genetic_sample', canonicalName: 'Sample' },
@@ -162,6 +164,61 @@ const validGraph = {
       details: { productForm: 'flower' },
       evidence,
     },
+    {
+      assertionId: '73000000-0000-4000-8000-000000000006',
+      fromNodeId: ids.cultivar,
+      toNodeId: ids.cultivarParent,
+      layer: 'documented_lineage',
+      relationship: 'cross',
+      position: 2,
+      evidenceStatus: 'confirmed',
+      details: {},
+      evidence,
+    },
+    {
+      assertionId: '73000000-0000-4000-8000-000000000007',
+      fromNodeId: ids.cultivar,
+      toNodeId: ids.cultivarParent,
+      layer: 'documented_lineage',
+      relationship: 'backcross',
+      position: null,
+      evidenceStatus: 'confirmed',
+      details: {},
+      evidence,
+    },
+    {
+      assertionId: '73000000-0000-4000-8000-000000000008',
+      fromNodeId: ids.cultivar,
+      toNodeId: ids.population,
+      layer: 'documented_lineage',
+      relationship: 'selection_from',
+      position: null,
+      evidenceStatus: 'confirmed',
+      details: {},
+      evidence,
+    },
+    {
+      assertionId: '73000000-0000-4000-8000-000000000009',
+      fromNodeId: ids.populationTwo,
+      toNodeId: ids.population,
+      layer: 'documented_lineage',
+      relationship: 'historical_origin',
+      position: null,
+      evidenceStatus: 'confirmed',
+      details: {},
+      evidence,
+    },
+    {
+      assertionId: '73000000-0000-4000-8000-000000000010',
+      fromNodeId: ids.sample,
+      toNodeId: ids.population,
+      layer: 'documented_lineage',
+      relationship: 'population_membership',
+      position: null,
+      evidenceStatus: 'confirmed',
+      details: {},
+      evidence,
+    },
   ],
 }
 
@@ -184,6 +241,7 @@ describe('knowledge graph mapper', () => {
     expect(result).toEqual(validGraph)
     expect(result.nodes.map((node) => node.kind)).toEqual([
       'origin_population',
+      'origin_population',
       'cultivar',
       'cultivar',
       'genetic_sample',
@@ -196,11 +254,39 @@ describe('knowledge graph mapper', () => {
       'genetic_similarity',
       'genetic_similarity',
       'product_mapping',
+      'documented_lineage',
+      'documented_lineage',
+      'documented_lineage',
+      'documented_lineage',
+      'documented_lineage',
     ])
     expect(new Set([...result.claims, ...result.edges].map((item) => item.evidenceStatus))).toEqual(new Set([
       'confirmed', 'single_source', 'disputed', 'historical', 'unknown', 'retracted',
     ]))
     expect('spatialDistance' in result.edges[0]).toBe(false)
+  })
+
+  it('accepts a null citation URL and canonicalizes mixed-case UUID references', () => {
+    const graph = cloneGraph()
+    const claim = (graph.claims as Array<Record<string, unknown>>)[0]
+    claim.nodeId = ids.cultivar.toUpperCase()
+    claim.evidence = { ...evidence, citationUrl: null }
+
+    const result = mapKnowledgeGraph(graph)
+
+    expect(result.claims[0].nodeId).toBe(ids.cultivar)
+    expect(result.claims[0].evidence.citationUrl).toBeNull()
+  })
+
+  it('measures text limits in Unicode code points rather than UTF-16 code units', () => {
+    const graph = cloneGraph()
+    const astralName = '𠜎'.repeat(100)
+    ;(graph.nodes as Array<Record<string, unknown>>)[0].canonicalName = astralName
+
+    expect(mapKnowledgeGraph(graph).nodes[0].canonicalName).toBe(astralName)
+    expectInvalid((invalidGraph) => {
+      ;(invalidGraph.nodes as Array<Record<string, unknown>>)[0].canonicalName = '𠜎'.repeat(161)
+    })
   })
 
   it.each<readonly [GraphChange]>([
@@ -215,6 +301,10 @@ describe('knowledge graph mapper', () => {
     [(graph) => { (graph.claims as Array<Record<string, unknown>>)[0].evidence = [] }],
     [(graph) => { (graph.edges as Array<Record<string, unknown>>)[0].details = [] }],
     [(graph) => { (graph.edges as Array<Record<string, unknown>>)[0].spatialDistance = 0.1 }],
+    [(graph) => { ((graph.claims as Array<Record<string, unknown>>)[0].value as Record<string, unknown>).unexpected = true }],
+    [(graph) => { ((graph.claims as Array<Record<string, unknown>>)[0].evidence as Record<string, unknown>).unexpected = true }],
+    [(graph) => { ((graph.edges as Array<Record<string, unknown>>)[2].details as Record<string, unknown>).unexpected = true }],
+    [(graph) => { ((graph.edges as Array<Record<string, unknown>>)[4].details as Record<string, unknown>).unexpected = true }],
     [(graph) => { (graph.claims as Array<Record<string, unknown>>)[0].evidence = { ...evidence, citationUrl: 'http://example.invalid/knowledge' } }],
     [(graph) => { (graph.claims as Array<Record<string, unknown>>)[0].evidence = { ...evidence, retrievedAt: '2026-02-30T12:00:00.000Z' } }],
     [(graph) => { ((graph.claims as Array<Record<string, unknown>>)[1].value as Record<string, unknown>).language = 'not a language tag' }],
@@ -225,6 +315,7 @@ describe('knowledge graph mapper', () => {
 
   it.each<readonly [string, GraphChange]>([
     ['node ID', (graph) => { (graph.nodes as Array<Record<string, unknown>>)[1].id = ids.population }],
+    ['mixed-case node ID', (graph) => { (graph.nodes as Array<Record<string, unknown>>)[1].id = ids.cultivar.toUpperCase() }],
     ['claim assertion ID', (graph) => { (graph.claims as Array<Record<string, unknown>>)[1].assertionId = '72000000-0000-4000-8000-000000000001' }],
     ['edge assertion ID', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].assertionId = '72000000-0000-4000-8000-000000000001' }],
     ['claim node reference', (graph) => { (graph.claims as Array<Record<string, unknown>>)[0].nodeId = '74000000-0000-4000-8000-000000000001' }],
@@ -240,13 +331,24 @@ describe('knowledge graph mapper', () => {
     ['documented edges with a target for unknown parents', (graph) => { (graph.edges as Array<Record<string, unknown>>)[1].toNodeId = ids.cultivarParent }],
     ['documented edges without a target', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].toNodeId = null }],
     ['documented edges between incompatible kinds', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].toNodeId = ids.population }],
+    ['documented self relations', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].toNodeId = ids.cultivar }],
     ['genetic edges that do not connect distinct samples', (graph) => { (graph.edges as Array<Record<string, unknown>>)[2].toNodeId = ids.sample }],
     ['product mappings other than product to cultivar', (graph) => { (graph.edges as Array<Record<string, unknown>>)[4].toNodeId = ids.population }],
     ['genetic relationships mislabeled as documented lineage', (graph) => { const edge = (graph.edges as Array<Record<string, unknown>>)[2]; edge.layer = 'documented_lineage'; edge.relationship = 'genetic_similarity'; edge.details = {}; edge.position = null }],
     ['pedigree relationships mislabeled as genetic similarity', (graph) => { const edge = (graph.edges as Array<Record<string, unknown>>)[0]; edge.layer = 'genetic_similarity'; edge.relationship = 'reported_parent'; edge.details = { ...((validGraph.edges[2].details)) }; edge.position = null; edge.fromNodeId = ids.sample; edge.toNodeId = ids.sampleMatch }],
     ['invalid documented-lineage position', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].position = 3 }],
     ['extra details on documented lineage', (graph) => { (graph.edges as Array<Record<string, unknown>>)[0].details = { note: 'not permitted' } }],
-    ['sample-match metrics', (graph) => { ((graph.edges as Array<Record<string, unknown>>)[3].details as Record<string, unknown>).value = 1 }],
+    ['sample-match metrics', (graph) => { const details = (graph.edges as Array<Record<string, unknown>>)[3].details as Record<string, unknown>; details.value = 1; details.unit = 'score' }],
+    ['cross endpoints', (graph) => { (graph.edges as Array<Record<string, unknown>>)[5].toNodeId = ids.population }],
+    ['cross self relation', (graph) => { (graph.edges as Array<Record<string, unknown>>)[5].toNodeId = ids.cultivar }],
+    ['backcross endpoints', (graph) => { (graph.edges as Array<Record<string, unknown>>)[6].toNodeId = ids.population }],
+    ['backcross self relation', (graph) => { (graph.edges as Array<Record<string, unknown>>)[6].toNodeId = ids.cultivar }],
+    ['selection endpoints', (graph) => { (graph.edges as Array<Record<string, unknown>>)[7].toNodeId = ids.sample }],
+    ['selection self relation', (graph) => { (graph.edges as Array<Record<string, unknown>>)[7].toNodeId = ids.cultivar }],
+    ['historical-origin endpoints', (graph) => { (graph.edges as Array<Record<string, unknown>>)[8].toNodeId = ids.cultivar }],
+    ['historical-origin self relation', (graph) => { (graph.edges as Array<Record<string, unknown>>)[8].toNodeId = ids.populationTwo }],
+    ['population-membership endpoints', (graph) => { (graph.edges as Array<Record<string, unknown>>)[9].toNodeId = ids.cultivar }],
+    ['population-membership self relation', (graph) => { (graph.edges as Array<Record<string, unknown>>)[9].toNodeId = ids.sample }],
   ])('rejects %s', (_description, change) => {
     expectInvalid(change)
   })
