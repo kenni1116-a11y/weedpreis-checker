@@ -1,0 +1,367 @@
+{
+  "contractVersion": 2,
+  "sourceId": "synthetic-knowledge-graph",
+  "startedAt": "2026-07-30T10:00:00.000Z",
+  "completedAt": "2026-07-30T10:00:06.000Z",
+  "cursor": null,
+  "records": [
+    {
+      "externalRecordKey": "synthetic-origin-001",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:01.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[0].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-origin-001",
+          "entityKind": "origin_population"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[0].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-origin-001",
+          "name": "Synthetic Origin Population",
+          "language": "en"
+        },
+        {
+          "kind": "traditional_classification",
+          "trace": {
+            "sourceLocator": "$.records[0].classification",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-origin-001",
+          "classification": "sativa"
+        },
+        {
+          "kind": "origin_region",
+          "trace": {
+            "sourceLocator": "$.records[0].region",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-origin-001",
+          "regionName": "Synthetic Highland",
+          "regionCode": null
+        },
+        {
+          "kind": "era",
+          "trace": {
+            "sourceLocator": "$.records[0].era",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-origin-001",
+          "startYear": -1200,
+          "endYear": -800,
+          "label": "Synthetic historical era"
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-parent-001",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:02.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[1].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-parent-001",
+          "entityKind": "cultivar"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[1].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-parent-001",
+          "name": "Synthetic Parent",
+          "language": "en"
+        },
+        {
+          "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.records[1].aliases[0]",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-parent-001",
+          "name": "Synthetic Parent DE",
+          "language": "de",
+          "aliasType": "market",
+          "market": "Germany"
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-child-001",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:03.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[2].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-child-001",
+          "entityKind": "cultivar"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[2].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-child-001",
+          "name": "Synthetic Child",
+          "language": "en"
+        },
+        {
+          "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.records[2].lineage[0]",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-child-001",
+          "relatedExternalKey": "synthetic-parent-001",
+          "relationship": "reported_parent",
+          "position": 1
+        },
+        {
+          "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.records[2].lineage[1]",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-child-001",
+          "relatedExternalKey": "synthetic-origin-001",
+          "relationship": "population_membership",
+          "position": null
+        },
+        {
+          "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.records[2].lineage[2]",
+            "extractionMethod": "manual"
+          },
+          "subjectExternalKey": "synthetic-child-001",
+          "relatedExternalKey": null,
+          "relationship": "unknown_parent",
+          "position": 2
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-sample-001",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:04.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[3].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-001",
+          "entityKind": "genetic_sample"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[3].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-001",
+          "name": "Synthetic Sample One",
+          "language": "en"
+        },
+        {
+          "kind": "sample_reference",
+          "trace": {
+            "sourceLocator": "$.records[3].sample",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-001",
+          "sampleIdentifier": "SYN-001",
+          "datasetName": "Synthetic Dataset",
+          "datasetVersion": "1.0",
+          "submitter": null,
+          "laboratory": "Synthetic Lab",
+          "sampledAt": "2026-07-01T00:00:00.000Z"
+        },
+        {
+          "kind": "genetic_relation",
+          "trace": {
+            "sourceLocator": "$.records[3].relations[0]",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-001",
+          "relatedExternalKey": "synthetic-sample-002",
+          "relationship": "genetic_similarity",
+          "method": "synthetic-method",
+          "datasetName": "Synthetic Dataset",
+          "datasetVersion": "1.0",
+          "metricName": "synthetic-similarity",
+          "value": 0.875,
+          "unit": "score"
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-sample-002",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:05.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[4].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-002",
+          "entityKind": "genetic_sample"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[4].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-002",
+          "name": "Synthetic Sample Two",
+          "language": "en"
+        },
+        {
+          "kind": "sample_reference",
+          "trace": {
+            "sourceLocator": "$.records[4].sample",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-sample-002",
+          "sampleIdentifier": "SYN-002",
+          "datasetName": "Synthetic Dataset",
+          "datasetVersion": "1.0",
+          "submitter": null,
+          "laboratory": "Synthetic Lab",
+          "sampledAt": "2026-07-02T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "externalRecordKey": "synthetic-product-001",
+      "upstreamState": "present",
+      "retrievedAt": "2026-07-30T10:00:06.000Z",
+      "sourceVersion": "fixture-knowledge-1",
+      "evidence": {
+        "kind": "raw",
+        "mediaType": "application/json",
+        "payload": { "fixture": "knowledge-graph" }
+      },
+      "validFrom": null,
+      "validTo": null,
+      "assertions": [
+        {
+          "kind": "entity_kind",
+          "trace": {
+            "sourceLocator": "$.records[5].kind",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-product-001",
+          "entityKind": "product"
+        },
+        {
+          "kind": "name",
+          "trace": {
+            "sourceLocator": "$.records[5].name",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-product-001",
+          "name": "Synthetic Medical Flower",
+          "language": "en"
+        },
+        {
+          "kind": "product_cultivar",
+          "trace": {
+            "sourceLocator": "$.records[5].cultivar",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-product-001",
+          "cultivarExternalKey": "synthetic-child-001",
+          "productForm": "flower"
+        },
+        {
+          "kind": "product_market",
+          "trace": {
+            "sourceLocator": "$.records[5].market",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-product-001",
+          "countryCode": "DE",
+          "medical": true
+        },
+        {
+          "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.records[5].measurement.thc",
+            "extractionMethod": "structured"
+          },
+          "subjectExternalKey": "synthetic-product-001",
+          "analyte": "thc",
+          "value": 20.5,
+          "unit": "percent",
+          "productForm": "flower",
+          "batchIdentifier": "SYN-BATCH-001",
+          "measuredAt": "2026-07-30T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

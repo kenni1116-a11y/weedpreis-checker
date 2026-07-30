@@ -5,6 +5,9 @@ import invalidFlowerValue from "../../tests/fixtures/source-adapter-invalid-flow
 import validFixture from "../../tests/fixtures/source-adapter-valid.json" with {
   type: "json",
 };
+import knowledgeGraphFixture from "../../tests/fixtures/source-adapter-knowledge-graph-valid.json" with {
+  type: "json",
+};
 import { validateAdapterBatch } from "./validate.ts";
 
 function cloned<T>(value: T): T {
@@ -27,6 +30,156 @@ function version2Fixture(): Record<string, unknown> {
   }
   return input;
 }
+
+function graphFixture(): Record<string, unknown> {
+  return cloned(knowledgeGraphFixture) as Record<string, unknown>;
+}
+
+function graphAssertion(
+  input: Record<string, unknown>,
+  subjectExternalKey: string,
+  kind: string,
+  relationship?: string,
+): Record<string, unknown> {
+  const records = input.records as Array<Record<string, unknown>>;
+  const assertions = records.flatMap((record) =>
+    record.assertions as Array<Record<string, unknown>>
+  );
+  const result = assertions.find((assertion) =>
+    assertion.subjectExternalKey === subjectExternalKey &&
+    assertion.kind === kind &&
+    (relationship === undefined || assertion.relationship === relationship)
+  );
+  if (!result) throw new Error(`missing ${kind} for ${subjectExternalKey}`);
+  return result;
+}
+
+Deno.test("source adapter preserves synthetic knowledge graph assertions without inference", () => {
+  const input = graphFixture();
+  const result = validateAdapterBatch(input);
+
+  assertEquals(result.batch as unknown, knowledgeGraphFixture);
+  assertEquals(result.reviewReasonsByRecord, {});
+  assertEquals(
+    result.batch.records[2].assertions.filter((item) =>
+      item.kind === "lineage"
+    ),
+    (knowledgeGraphFixture.records[2].assertions as Array<
+      Record<string, unknown>
+    >)
+      .filter((item) => item.kind === "lineage"),
+  );
+  assertEquals(
+    result.batch.records[3].assertions[3],
+    knowledgeGraphFixture.records[3].assertions[3] as unknown,
+  );
+});
+
+Deno.test("source adapter validates knowledge assertion cross-field constraints", () => {
+  const mutations: Array<[
+    string,
+    (input: Record<string, unknown>) => void,
+  ]> = [
+    ["unknown_parent must not name a related record", (input) => {
+      graphAssertion(input, "synthetic-child-001", "lineage", "unknown_parent")
+        .relatedExternalKey = "synthetic-parent-001";
+    }],
+    ["reported_parent must name a related record", (input) => {
+      graphAssertion(input, "synthetic-child-001", "lineage", "reported_parent")
+        .relatedExternalKey = null;
+    }],
+    ["lineage position is limited to first or second", (input) => {
+      graphAssertion(input, "synthetic-child-001", "lineage", "reported_parent")
+        .position = 3;
+    }],
+    ["era cannot end before it starts", (input) => {
+      graphAssertion(input, "synthetic-origin-001", "era").endYear = -1201;
+    }],
+    ["era years have bounded historical range", (input) => {
+      graphAssertion(input, "synthetic-origin-001", "era").startYear = 2101;
+    }],
+    ["genetic relations cannot be self-referential", (input) => {
+      const relation = graphAssertion(
+        input,
+        "synthetic-sample-001",
+        "genetic_relation",
+      );
+      relation.relatedExternalKey = relation.subjectExternalKey;
+    }],
+    ["genetic relation scores must be finite", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation").value =
+        Number.POSITIVE_INFINITY;
+    }],
+    ["sample matches do not carry a numeric value", (input) => {
+      const relation = graphAssertion(
+        input,
+        "synthetic-sample-001",
+        "genetic_relation",
+      );
+      relation.relationship = "sample_match";
+      relation.unit = null;
+    }],
+    ["sample matches do not carry a unit", (input) => {
+      const relation = graphAssertion(
+        input,
+        "synthetic-sample-001",
+        "genetic_relation",
+      );
+      relation.relationship = "sample_match";
+      relation.value = null;
+    }],
+    ["genetic similarity scores require a unit with a value", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation").unit =
+        null;
+    }],
+    ["genetic similarity scores require a value with a unit", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation").value =
+        null;
+    }],
+    ["product markets use two uppercase ASCII country letters", (input) => {
+      graphAssertion(input, "synthetic-product-001", "product_market")
+        .countryCode = "De";
+    }],
+    ["product markets are always medical", (input) => {
+      graphAssertion(input, "synthetic-product-001", "product_market")
+        .medical = false;
+    }],
+    ["empty genetic method is rejected", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation").method =
+        "";
+    }],
+    ["empty genetic dataset is rejected", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation")
+        .datasetName = "";
+    }],
+    ["empty genetic metric is rejected", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "genetic_relation")
+        .metricName = "";
+    }],
+    ["empty sample identifier is rejected", (input) => {
+      graphAssertion(input, "synthetic-sample-001", "sample_reference")
+        .sampleIdentifier = "";
+    }],
+    ["empty region is rejected", (input) => {
+      graphAssertion(input, "synthetic-origin-001", "origin_region")
+        .regionName = "";
+    }],
+    ["empty alias type is rejected", (input) => {
+      graphAssertion(input, "synthetic-parent-001", "alias").aliasType = "";
+    }],
+  ];
+
+  for (const [name, mutate] of mutations) {
+    const input = graphFixture();
+    mutate(input);
+    assertThrows(
+      () => validateAdapterBatch(input),
+      Error,
+      undefined,
+      `expected ${name} to be rejected`,
+    );
+  }
+});
 
 Deno.test("source adapter requires contract version 2", () => {
   const missingVersion = cloned(validFixture) as Record<string, unknown>;

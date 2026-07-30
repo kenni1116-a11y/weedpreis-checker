@@ -205,6 +205,9 @@ function nullableYear(value: unknown, path: string): number | null {
   if (value === null) return null;
   const year = finiteNumber(value, path);
   if (!Number.isInteger(year)) invalid(path, "expected an integer year");
+  if (year < -10000 || year > 2100) {
+    invalid(path, "expected a year between -10000 and 2100");
+  }
   return year;
 }
 
@@ -427,6 +430,31 @@ function assertion(
     ) {
       invalid(`${path}.position`, "expected 1, 2, or null");
     }
+    const relatedExternalKey = input.relatedExternalKey === null
+      ? null
+      : externalKey(input.relatedExternalKey, `${path}.relatedExternalKey`);
+    const relationship = oneOf(
+      input.relationship,
+      [
+        "reported_parent",
+        "cross",
+        "backcross",
+        "selection_from",
+        "historical_origin",
+        "population_membership",
+        "unknown_parent",
+      ] as const,
+      `${path}.relationship`,
+    );
+    if (relationship === "unknown_parent" && relatedExternalKey !== null) {
+      invalid(`${path}.relatedExternalKey`, "must be null for unknown_parent");
+    }
+    if (relationship !== "unknown_parent" && relatedExternalKey === null) {
+      invalid(
+        `${path}.relatedExternalKey`,
+        "is required for this relationship",
+      );
+    }
     return {
       kind,
       trace: assertionTrace(input.trace, `${path}.trace`),
@@ -434,22 +462,8 @@ function assertion(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
       ),
-      relatedExternalKey: input.relatedExternalKey === null
-        ? null
-        : externalKey(input.relatedExternalKey, `${path}.relatedExternalKey`),
-      relationship: oneOf(
-        input.relationship,
-        [
-          "reported_parent",
-          "cross",
-          "backcross",
-          "selection_from",
-          "historical_origin",
-          "population_membership",
-          "unknown_parent",
-        ] as const,
-        `${path}.relationship`,
-      ),
+      relatedExternalKey,
+      relationship,
       position: input.position,
     };
   }
@@ -472,22 +486,43 @@ function assertion(
       ],
       path,
     );
+    const subjectExternalKey = externalKey(
+      input.subjectExternalKey,
+      `${path}.subjectExternalKey`,
+    );
+    const relatedExternalKey = externalKey(
+      input.relatedExternalKey,
+      `${path}.relatedExternalKey`,
+    );
+    if (relatedExternalKey === subjectExternalKey) {
+      invalid(
+        `${path}.relatedExternalKey`,
+        "must differ from subjectExternalKey",
+      );
+    }
+    const relationship = oneOf(
+      input.relationship,
+      ["genetic_similarity", "sample_match"] as const,
+      `${path}.relationship`,
+    );
+    const value = nullableFiniteNumber(input.value, `${path}.value`);
+    const unit = nullableText(input.unit, `${path}.unit`, 100);
+    const hasPair = (value === null && unit === null) ||
+      (typeof value === "number" && unit !== null);
+    if (!hasPair) {
+      invalid(path, "value and unit must both be present or both be null");
+    }
+    if (
+      relationship === "sample_match" && (value !== null || unit !== null)
+    ) {
+      invalid(path, "sample_match does not carry a numeric score");
+    }
     return {
       kind,
       trace: assertionTrace(input.trace, `${path}.trace`),
-      subjectExternalKey: externalKey(
-        input.subjectExternalKey,
-        `${path}.subjectExternalKey`,
-      ),
-      relatedExternalKey: externalKey(
-        input.relatedExternalKey,
-        `${path}.relatedExternalKey`,
-      ),
-      relationship: oneOf(
-        input.relationship,
-        ["genetic_similarity", "sample_match"] as const,
-        `${path}.relationship`,
-      ),
+      subjectExternalKey,
+      relatedExternalKey,
+      relationship,
       method: text(input.method, `${path}.method`, 240),
       datasetName: text(input.datasetName, `${path}.datasetName`, 240),
       datasetVersion: nullableText(
@@ -496,8 +531,8 @@ function assertion(
         160,
       ),
       metricName: text(input.metricName, `${path}.metricName`, 240),
-      value: nullableFiniteNumber(input.value, `${path}.value`),
-      unit: nullableText(input.unit, `${path}.unit`, 100),
+      value,
+      unit,
     };
   }
 
@@ -541,6 +576,10 @@ function assertion(
       "medical",
     ], path);
     if (input.medical !== true) invalid(`${path}.medical`, "expected true");
+    const countryCode = text(input.countryCode, `${path}.countryCode`, 2);
+    if (!/^[A-Z]{2}$/.test(countryCode)) {
+      invalid(`${path}.countryCode`, "expected two uppercase ASCII letters");
+    }
     return {
       kind,
       trace: assertionTrace(input.trace, `${path}.trace`),
@@ -548,7 +587,7 @@ function assertion(
         input.subjectExternalKey,
         `${path}.subjectExternalKey`,
       ),
-      countryCode: text(input.countryCode, `${path}.countryCode`, 2),
+      countryCode,
       medical: true,
     };
   }
