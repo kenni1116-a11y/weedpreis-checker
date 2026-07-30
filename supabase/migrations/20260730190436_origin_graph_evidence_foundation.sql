@@ -1175,6 +1175,244 @@ begin
 end;
 $$;
 
+create function private.review_knowledge_assertion(
+  p_assertion_id uuid,
+  p_decision text,
+  p_entity_id uuid,
+  p_related_entity_id uuid,
+  p_evidence_status text,
+  p_note text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  assertion_row catalog.normalized_assertions%rowtype;
+  source_status text;
+  entity_kind text;
+  related_kind text;
+  relationship_kind text;
+  reviewer text := session_user::text;
+  review_time timestamptz := now();
+begin
+  select assertion.*
+  into assertion_row
+  from catalog.normalized_assertions as assertion
+  join catalog.source_records as source_record
+    on source_record.id = assertion.source_record_id
+  join catalog.sources as source
+    on source.id = source_record.source_id
+  where assertion.id = p_assertion_id
+  for update of assertion, source_record, source;
+
+  if not found then
+    raise exception using
+      errcode = '22023',
+      message = 'Unknown knowledge assertion';
+  end if;
+
+  select source.status
+  into source_status
+  from catalog.sources as source
+  join catalog.source_records as source_record
+    on source_record.source_id = source.id
+  where source_record.id = assertion_row.source_record_id;
+
+  if p_decision is null
+     or p_decision not in ('accepted', 'rejected')
+     or char_length(coalesce(p_note, '')) > 1000 then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid knowledge review';
+  end if;
+
+  if p_decision = 'rejected' then
+    if p_entity_id is not null
+       or p_related_entity_id is not null
+       or p_evidence_status is not null then
+      raise exception using
+        errcode = '22023',
+        message = 'Rejected knowledge assertions cannot map canonical entities or evidence';
+    end if;
+  else
+    if source_status = 'blocked' then
+      raise exception using
+        errcode = '42501',
+        message = 'Blocked source assertions cannot be accepted';
+    end if;
+
+    if p_entity_id is null then
+      raise exception using
+        errcode = '22023',
+        message = 'Accepted knowledge assertions require a canonical entity';
+    end if;
+
+    if p_evidence_status is null
+       or p_evidence_status not in (
+         'confirmed',
+         'single_source',
+         'disputed',
+         'historical',
+         'unknown',
+         'retracted'
+       ) then
+      raise exception using
+        errcode = '22023',
+        message = 'Accepted knowledge assertions require a valid evidence status';
+    end if;
+
+    select entity.kind
+    into entity_kind
+    from catalog.entities as entity
+    where entity.id = p_entity_id;
+
+    if entity_kind is null then
+      raise exception using
+        errcode = '22023',
+        message = 'Unknown canonical entity';
+    end if;
+
+    if p_related_entity_id is not null then
+      select entity.kind
+      into related_kind
+      from catalog.entities as entity
+      where entity.id = p_related_entity_id;
+
+      if related_kind is null then
+        raise exception using
+          errcode = '22023',
+          message = 'Unknown related canonical entity';
+      end if;
+    end if;
+
+    if assertion_row.assertion_kind = 'entity_kind' then
+      if entity_kind <> assertion_row.payload ->> 'entityKind' then
+        raise exception using
+          errcode = '22023',
+          message = 'Canonical entity kind does not match the assertion';
+      end if;
+    end if;
+
+    if assertion_row.assertion_kind = 'lineage' then
+      relationship_kind := assertion_row.payload ->> 'relationship';
+
+      if relationship_kind in ('reported_parent', 'cross', 'backcross') then
+        if p_related_entity_id is null
+           or entity_kind <> 'cultivar'
+           or related_kind <> 'cultivar' then
+          raise exception using
+            errcode = '22023',
+            message = 'Documented parentage requires two cultivars';
+        end if;
+      elsif relationship_kind = 'selection_from' then
+        if p_related_entity_id is null
+           or entity_kind <> 'cultivar'
+           or related_kind not in ('cultivar', 'origin_population') then
+          raise exception using
+            errcode = '22023',
+            message = 'Selection requires a cultivar and a cultivar or origin population';
+        end if;
+      elsif relationship_kind = 'historical_origin' then
+        if p_related_entity_id is null
+           or entity_kind not in ('cultivar', 'origin_population')
+           or related_kind <> 'origin_population'
+           or p_entity_id = p_related_entity_id then
+          raise exception using
+            errcode = '22023',
+            message = 'Historical origin requires a distinct origin population';
+        end if;
+      elsif relationship_kind = 'population_membership' then
+        if p_related_entity_id is null
+           or entity_kind not in ('cultivar', 'genetic_sample')
+           or related_kind <> 'origin_population' then
+          raise exception using
+            errcode = '22023',
+            message = 'Population membership requires a cultivar or genetic sample and an origin population';
+        end if;
+      elsif relationship_kind = 'unknown_parent' then
+        if entity_kind <> 'cultivar'
+           or p_related_entity_id is not null then
+          raise exception using
+            errcode = '22023',
+            message = 'Unknown parent requires a cultivar without a related entity';
+        end if;
+      else
+        raise exception using
+          errcode = '22023',
+          message = 'Unsupported lineage relationship';
+      end if;
+    elsif assertion_row.assertion_kind = 'genetic_relation' then
+      if p_related_entity_id is null
+         or entity_kind <> 'genetic_sample'
+         or related_kind <> 'genetic_sample'
+         or p_entity_id = p_related_entity_id then
+        raise exception using
+          errcode = '22023',
+          message = 'Genetic relations require two different genetic samples';
+      end if;
+    elsif assertion_row.assertion_kind = 'product_cultivar' then
+      if p_related_entity_id is null
+         or entity_kind <> 'product'
+         or related_kind <> 'cultivar' then
+        raise exception using
+          errcode = '22023',
+          message = 'Product mapping requires a product and cultivar';
+      end if;
+    elsif p_related_entity_id is not null then
+      raise exception using
+        errcode = '22023',
+        message = 'This knowledge assertion has no related entity';
+    end if;
+  end if;
+
+  insert into catalog.assertion_reviews(
+    assertion_id,
+    decision,
+    entity_id,
+    related_entity_id,
+    reviewer_name,
+    reviewed_at,
+    note,
+    evidence_status
+  ) values (
+    p_assertion_id,
+    p_decision,
+    p_entity_id,
+    p_related_entity_id,
+    reviewer,
+    review_time,
+    nullif(btrim(p_note), ''),
+    p_evidence_status
+  )
+  on conflict (assertion_id) do update
+  set decision = excluded.decision,
+      entity_id = excluded.entity_id,
+      related_entity_id = excluded.related_entity_id,
+      reviewer_name = excluded.reviewer_name,
+      reviewed_at = excluded.reviewed_at,
+      note = excluded.note,
+      evidence_status = excluded.evidence_status;
+
+  update catalog.review_cases
+  set status = 'closed',
+      decision = p_decision,
+      reviewer_name = reviewer,
+      reviewed_at = review_time,
+      note = nullif(btrim(p_note), '')
+  where assertion_id = p_assertion_id;
+end;
+$$;
+
+revoke all on function private.review_knowledge_assertion(
+  uuid, text, uuid, uuid, text, text
+) from public, anon, authenticated, service_role, source_ingestor;
+
+grant execute on function private.review_knowledge_assertion(
+  uuid, text, uuid, uuid, text, text
+) to source_reviewer;
+
 create table catalog.knowledge_publication_snapshots (
   id uuid primary key default gen_random_uuid(),
   previous_snapshot_id uuid

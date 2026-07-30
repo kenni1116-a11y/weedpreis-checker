@@ -138,6 +138,14 @@ select ok(
 select ok(
   not has_function_privilege(
     'source_ingestor',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'ingestor cannot review knowledge assertions'
+);
+select ok(
+  not has_function_privilege(
+    'source_ingestor',
     'private.review_source_record_deletion(uuid,text,text)',
     'execute'
   ),
@@ -150,6 +158,14 @@ select ok(
     'execute'
   ),
   'reviewer can execute the review capability'
+);
+select ok(
+  has_function_privilege(
+    'source_reviewer',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'reviewer can execute the knowledge review capability'
 );
 select ok(
   has_function_privilege(
@@ -207,6 +223,24 @@ select ok(
 select ok(
   not has_function_privilege(
     'anon',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'browser and broad API roles cannot execute knowledge review'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
     'private.review_source_record_deletion(uuid,text,text)',
     'execute'
   )
@@ -256,6 +290,24 @@ select ok(
       'private.review_source_assertion(uuid,text,uuid,uuid,text)'::regprocedure
   ) like '%search_path=""%',
   'source review has an empty search path'
+);
+select ok(
+  (
+    select prosecdef
+    from pg_proc
+    where oid =
+      'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)'::regprocedure
+  ),
+  'knowledge review is a security-definer capability'
+);
+select ok(
+  (
+    select array_to_string(proconfig, ',')
+    from pg_proc
+    where oid =
+      'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)'::regprocedure
+  ) like '%search_path=""%',
+  'knowledge review has an empty search path'
 );
 
 select $batch$
