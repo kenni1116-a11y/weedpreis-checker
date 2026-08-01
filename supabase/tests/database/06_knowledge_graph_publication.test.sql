@@ -1,19 +1,60 @@
 begin;
 select no_plan();
 
-create temporary table task8_seed_snapshot_baseline as
-select count(*)::bigint as snapshot_count
-from catalog.knowledge_publication_snapshots;
-
-update catalog.sources
-set status = 'blocked'
-where id = 'synthetic-knowledge-graph-seed-source';
-
-delete from api.published_knowledge_edges;
-delete from api.published_knowledge_claims;
-delete from api.published_knowledge_nodes;
-delete from api.published_knowledge_snapshot;
-delete from catalog.knowledge_current_snapshot;
+select is(
+  (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no private knowledge snapshot metadata'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_nodes)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no private knowledge snapshot nodes'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_claims)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no private knowledge snapshot claims'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_edges)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no private knowledge snapshot edges'
+);
+select is(
+  (select count(*) from catalog.knowledge_current_snapshot)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no private current knowledge pointer'
+);
+select is(
+  (select count(*) from api.published_knowledge_snapshot)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no API knowledge snapshot'
+);
+select is(
+  (select count(*) from api.published_knowledge_nodes)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no API knowledge nodes'
+);
+select is(
+  (select count(*) from api.published_knowledge_claims)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no API knowledge claims'
+);
+select is(
+  (select count(*) from api.published_knowledge_edges)::bigint,
+  0::bigint,
+  'the synthetic seed leaves no API knowledge edges'
+);
+select is(
+  (
+    select status
+    from catalog.sources
+    where id = 'synthetic-knowledge-graph-seed-source'
+  ),
+  'blocked'::text,
+  'the synthetic graph seed source remains blocked outside its atomic seed unit'
+);
 
 insert into catalog.sources(
   id,
@@ -2600,10 +2641,7 @@ select throws_ok(
 );
 select is(
   (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
-  (
-    select snapshot_count + 1
-    from task8_seed_snapshot_baseline
-  ),
+  1::bigint,
   'a malformed publication does not leave private snapshot metadata behind'
 );
 select is(
@@ -2660,10 +2698,7 @@ select isnt(
 );
 select is(
   (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
-  (
-    select snapshot_count + 2
-    from task8_seed_snapshot_baseline
-  ),
+  2::bigint,
   'a second successful publication preserves both immutable private snapshots'
 );
 select ok(
@@ -3437,10 +3472,41 @@ select
   :'task8_snapshot_id'::uuid as snapshot_id,
   (select count(*) from api.published_knowledge_nodes) as node_count,
   (select count(*) from api.published_knowledge_claims) as claim_count,
-  (select count(*) from api.published_knowledge_edges) as edge_count;
+  (select count(*) from api.published_knowledge_edges) as edge_count,
+  (
+    select count(*)
+    from catalog.knowledge_publication_snapshots
+  ) as private_snapshot_count,
+  (
+    select count(*)
+    from catalog.knowledge_snapshot_nodes
+  ) as private_node_count,
+  (
+    select count(*)
+    from catalog.knowledge_snapshot_claims
+  ) as private_claim_count,
+  (
+    select count(*)
+    from catalog.knowledge_snapshot_edges
+  ) as private_edge_count,
+  (
+    select snapshot_id
+    from catalog.knowledge_current_snapshot
+    where singleton
+  ) as private_current_snapshot_id;
 
 create temporary table task8_valid_rpc as
 select api.get_published_knowledge_graph() as graph;
+
+create temporary table task8_duplicate_failure_baseline as
+select
+  state.*,
+  rpc.graph #>> '{snapshotId}' as rpc_snapshot_id,
+  jsonb_array_length(rpc.graph -> 'nodes') as rpc_node_count,
+  jsonb_array_length(rpc.graph -> 'claims') as rpc_claim_count,
+  jsonb_array_length(rpc.graph -> 'edges') as rpc_edge_count
+from task8_valid_graph_state as state
+cross join task8_valid_rpc as rpc;
 
 select ok(
   (
@@ -3581,7 +3647,8 @@ select set_eq(
       'evidenceStatus', edge.value ->> 'evidenceStatus',
       'details', edge.value -> 'details',
       'sourceLocator', edge.value #>> '{evidence,sourceLocator}',
-      'extractionMethod', edge.value #>> '{evidence,extractionMethod}'
+      'extractionMethod', edge.value #>> '{evidence,extractionMethod}',
+      'retrievedAt', edge.value #>> '{evidence,retrievedAt}'
     )
     from task8_valid_rpc as rpc
     cross join jsonb_array_elements(rpc.graph -> 'edges') as edge(value)
@@ -3597,13 +3664,13 @@ select set_eq(
   $$,
   $$
     values
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000002","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[2].lineage[0]","extractionMethod":"manual"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000001","layer":"documented_lineage","relationship":"population_membership","position":null,"evidenceStatus":"historical","details":{},"sourceLocator":"$.records[2].lineage[1]","extractionMethod":"manual"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":null,"layer":"documented_lineage","relationship":"unknown_parent","position":2,"evidenceStatus":"unknown","details":{},"sourceLocator":"$.records[2].lineage[2]","extractionMethod":"manual"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000004","toNodeId":"62000000-0000-4000-8000-000000000005","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"confirmed","details":{"method":"synthetic-method","datasetName":"Synthetic Dataset","datasetVersion":"1.0","metricName":"synthetic-similarity","value":0.875,"unit":"score"},"sourceLocator":"$.records[3].relations[0]","extractionMethod":"structured"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000005","toNodeId":"62000000-0000-4000-8000-000000000004","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"single_source","details":{"method":"synthetic-parentage-defense","datasetName":"Synthetic Defense Dataset","datasetVersion":"2.0","metricName":"synthetic-distance","value":0.125,"unit":"distance"},"sourceLocator":"$.records[4].relations[0]","extractionMethod":"manual"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000006","toNodeId":"62000000-0000-4000-8000-000000000003","layer":"product_mapping","relationship":"product_cultivar","position":null,"evidenceStatus":"confirmed","details":{"productForm":"flower"},"sourceLocator":"$.records[5].cultivar","extractionMethod":"structured"}'::jsonb),
-      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000007","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[6].lineage[0]","extractionMethod":"manual"}'::jsonb)
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000002","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[2].lineage[0]","extractionMethod":"manual","retrievedAt":"2026-07-30T10:00:03+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000001","layer":"documented_lineage","relationship":"population_membership","position":null,"evidenceStatus":"historical","details":{},"sourceLocator":"$.records[2].lineage[1]","extractionMethod":"manual","retrievedAt":"2026-07-30T10:00:03+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":null,"layer":"documented_lineage","relationship":"unknown_parent","position":2,"evidenceStatus":"unknown","details":{},"sourceLocator":"$.records[2].lineage[2]","extractionMethod":"manual","retrievedAt":"2026-07-30T10:00:03+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000004","toNodeId":"62000000-0000-4000-8000-000000000005","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"confirmed","details":{"method":"synthetic-method","datasetName":"Synthetic Dataset","datasetVersion":"1.0","metricName":"synthetic-similarity","value":0.875,"unit":"score"},"sourceLocator":"$.records[3].relations[0]","extractionMethod":"structured","retrievedAt":"2026-07-30T10:00:04+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000005","toNodeId":"62000000-0000-4000-8000-000000000004","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"single_source","details":{"method":"synthetic-parentage-defense","datasetName":"Synthetic Defense Dataset","datasetVersion":"2.0","metricName":"synthetic-distance","value":0.125,"unit":"distance"},"sourceLocator":"$.records[4].relations[0]","extractionMethod":"manual","retrievedAt":"2026-07-30T10:00:05+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000006","toNodeId":"62000000-0000-4000-8000-000000000003","layer":"product_mapping","relationship":"product_cultivar","position":null,"evidenceStatus":"confirmed","details":{"productForm":"flower"},"sourceLocator":"$.records[5].cultivar","extractionMethod":"structured","retrievedAt":"2026-07-30T10:00:06+00:00"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000007","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[6].lineage[0]","extractionMethod":"manual","retrievedAt":"2026-07-30T10:00:07+00:00"}'::jsonb)
   $$,
   'the RPC keeps exact documented, genetic, and product edges in separate layers'
 );
@@ -3624,11 +3691,27 @@ select ok(
     )
       and (
         claim.value #>> '{evidence,sourceName}'
-          <> 'Task 8 synthetic knowledge source'
-        or claim.value #>> '{evidence,sourceVersion}' <> 'task8-v1'
+          is distinct from 'Task 8 synthetic knowledge source'
+        or claim.value #>> '{evidence,sourceVersion}'
+          is distinct from 'task8-v1'
         or claim.value #>> '{evidence,attribution}'
-          <> 'Task 8 synthetic-only attribution'
-        or claim.value #> '{evidence,citationUrl}' <> 'null'::jsonb
+          is distinct from 'Task 8 synthetic-only attribution'
+        or claim.value #> '{evidence,citationUrl}'
+          is distinct from 'null'::jsonb
+        or (
+          select array_agg(evidence_key order by evidence_key)
+          from jsonb_object_keys(
+            claim.value -> 'evidence'
+          ) as evidence_keys(evidence_key)
+        ) is distinct from array[
+          'attribution',
+          'citationUrl',
+          'extractionMethod',
+          'retrievedAt',
+          'sourceLocator',
+          'sourceName',
+          'sourceVersion'
+        ]::text[]
       )
   )
   and not exists (
@@ -3646,11 +3729,27 @@ select ok(
     )
       and (
         edge.value #>> '{evidence,sourceName}'
-          <> 'Task 8 synthetic knowledge source'
-        or edge.value #>> '{evidence,sourceVersion}' <> 'task8-v1'
+          is distinct from 'Task 8 synthetic knowledge source'
+        or edge.value #>> '{evidence,sourceVersion}'
+          is distinct from 'task8-v1'
         or edge.value #>> '{evidence,attribution}'
-          <> 'Task 8 synthetic-only attribution'
-        or edge.value #> '{evidence,citationUrl}' <> 'null'::jsonb
+          is distinct from 'Task 8 synthetic-only attribution'
+        or edge.value #> '{evidence,citationUrl}'
+          is distinct from 'null'::jsonb
+        or (
+          select array_agg(evidence_key order by evidence_key)
+          from jsonb_object_keys(
+            edge.value -> 'evidence'
+          ) as evidence_keys(evidence_key)
+        ) is distinct from array[
+          'attribution',
+          'citationUrl',
+          'extractionMethod',
+          'retrievedAt',
+          'sourceLocator',
+          'sourceName',
+          'sourceVersion'
+        ]::text[]
       )
   ),
   'every synthetic RPC claim and edge retains the exact source evidence envelope'
@@ -3780,30 +3879,96 @@ select throws_ok(
   'a second accepted canonical name aborts graph publication'
 );
 
-select ok(
+create temporary table task8_duplicate_failure_rpc as
+select api.get_published_knowledge_graph() as graph;
+
+select is(
+  (select count(*) from catalog.knowledge_publication_snapshots),
+  (select private_snapshot_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves private snapshot metadata unchanged'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_nodes),
+  (select private_node_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves private snapshot nodes unchanged'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_claims),
+  (select private_claim_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves private snapshot claims unchanged'
+);
+select is(
+  (select count(*) from catalog.knowledge_snapshot_edges),
+  (select private_edge_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves private snapshot edges unchanged'
+);
+select is(
   (
-    select
-      snapshot_id = :'task8_snapshot_id'::uuid
-      and node_count = (select count(*) from api.published_knowledge_nodes)
-      and claim_count = (select count(*) from api.published_knowledge_claims)
-      and edge_count = (select count(*) from api.published_knowledge_edges)
-    from task8_valid_graph_state
-  )
-  and (
-    select snapshot_id = :'task8_snapshot_id'::uuid
+    select snapshot_id
     from catalog.knowledge_current_snapshot
     where singleton
-  )
-  and (
-    select snapshot_id = :'task8_snapshot_id'::uuid
+  ),
+  (
+    select private_current_snapshot_id
+    from task8_duplicate_failure_baseline
+  ),
+  'failed duplicate-name publication leaves the private current pointer unchanged'
+);
+select is(
+  (
+    select snapshot_id
     from api.published_knowledge_snapshot
     where singleton
-  )
-  and (
-    api.get_published_knowledge_graph() #>> '{snapshotId}'
-      = :'task8_snapshot_id'
   ),
-  'failed duplicate-name publication preserves the prior snapshot UUID and row counts'
+  (select snapshot_id from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves the API snapshot pointer unchanged'
+);
+select is(
+  (select count(*) from api.published_knowledge_nodes),
+  (select node_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves API nodes unchanged'
+);
+select is(
+  (select count(*) from api.published_knowledge_claims),
+  (select claim_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves API claims unchanged'
+);
+select is(
+  (select count(*) from api.published_knowledge_edges),
+  (select edge_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication leaves API edges unchanged'
+);
+select is(
+  (
+    select graph #>> '{snapshotId}'
+    from task8_duplicate_failure_rpc
+  ),
+  (select rpc_snapshot_id from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication preserves the complete RPC snapshot ID'
+);
+select is(
+  (
+    select jsonb_array_length(graph -> 'nodes')
+    from task8_duplicate_failure_rpc
+  ),
+  (select rpc_node_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication preserves the complete RPC node array length'
+);
+select is(
+  (
+    select jsonb_array_length(graph -> 'claims')
+    from task8_duplicate_failure_rpc
+  ),
+  (select rpc_claim_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication preserves the complete RPC claim array length'
+);
+select is(
+  (
+    select jsonb_array_length(graph -> 'edges')
+    from task8_duplicate_failure_rpc
+  ),
+  (select rpc_edge_count from task8_duplicate_failure_baseline),
+  'failed duplicate-name publication preserves the complete RPC edge array length'
 );
 
 select * from finish();

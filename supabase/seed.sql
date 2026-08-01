@@ -472,6 +472,8 @@ set role source_reviewer;
 select private.publish_reviewed_catalog();
 reset role;
 
+begin;
+
 insert into catalog.sources(
   id,
   display_name,
@@ -990,3 +992,5 @@ join catalog.normalized_assertions as assertion
 update catalog.sources
 set status = 'blocked'
 where id = 'synthetic-knowledge-graph-seed-source';
+
+commit;
