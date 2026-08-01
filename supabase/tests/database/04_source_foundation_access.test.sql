@@ -31,12 +31,19 @@ insert into catalog.sources(
   'inactive'
 );
 
-insert into catalog.entities(id, kind, canonical_name, published) values (
-  '33000000-0000-4000-8000-000000000001',
-  'cultivar',
-  'Synthetic reviewed cultivar',
-  false
-);
+insert into catalog.entities(id, kind, canonical_name, published) values
+  (
+    '33000000-0000-4000-8000-000000000001',
+    'cultivar',
+    'Synthetic reviewed cultivar',
+    false
+  ),
+  (
+    '33000000-0000-4000-8000-000000000002',
+    'product',
+    'Synthetic reviewed flower product',
+    false
+  );
 
 select ok(
   not has_schema_privilege('anon', 'catalog', 'usage'),
@@ -60,6 +67,66 @@ select ok(
 );
 
 select ok(
+  not exists (
+    select 1
+    from unnest(
+      array[
+        'public',
+        'anon',
+        'authenticated',
+        'service_role',
+        'source_ingestor',
+        'source_reviewer'
+      ]
+    ) as role_name(name)
+    cross join unnest(
+      array[
+        'catalog.knowledge_publication_snapshots',
+        'catalog.knowledge_current_snapshot',
+        'catalog.knowledge_snapshot_nodes',
+        'catalog.knowledge_snapshot_claims',
+        'catalog.knowledge_snapshot_edges'
+      ]
+    ) as relation_name(name)
+    cross join unnest(
+      array[
+        'SELECT',
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'TRUNCATE',
+        'REFERENCES',
+        'TRIGGER'
+      ]
+    ) as privilege_name(name)
+    where has_table_privilege(
+      role_name.name,
+      relation_name.name,
+      privilege_name.name
+    )
+  ),
+  'knowledge snapshot tables expose no direct privileges'
+);
+
+select ok(
+  (
+    select bool_and(relation.relrowsecurity)
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'catalog'
+      and relation.relname in (
+        'knowledge_publication_snapshots',
+        'knowledge_current_snapshot',
+        'knowledge_snapshot_nodes',
+        'knowledge_snapshot_claims',
+        'knowledge_snapshot_edges'
+      )
+  ),
+  'knowledge snapshot tables have row-level security enabled'
+);
+
+select ok(
   has_function_privilege(
     'source_ingestor',
     'private.record_source_import(jsonb)',
@@ -78,6 +145,14 @@ select ok(
 select ok(
   not has_function_privilege(
     'source_ingestor',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'ingestor cannot review knowledge assertions'
+);
+select ok(
+  not has_function_privilege(
+    'source_ingestor',
     'private.review_source_record_deletion(uuid,text,text)',
     'execute'
   ),
@@ -90,6 +165,14 @@ select ok(
     'execute'
   ),
   'reviewer can execute the review capability'
+);
+select ok(
+  has_function_privilege(
+    'source_reviewer',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'reviewer can execute the knowledge review capability'
 );
 select ok(
   has_function_privilege(
@@ -147,6 +230,24 @@ select ok(
 select ok(
   not has_function_privilege(
     'anon',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  )
+  and not has_function_privilege(
+    'service_role',
+    'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)',
+    'execute'
+  ),
+  'browser and broad API roles cannot execute knowledge review'
+);
+select ok(
+  not has_function_privilege(
+    'anon',
     'private.review_source_record_deletion(uuid,text,text)',
     'execute'
   )
@@ -197,9 +298,28 @@ select ok(
   ) like '%search_path=""%',
   'source review has an empty search path'
 );
+select ok(
+  (
+    select prosecdef
+    from pg_proc
+    where oid =
+      'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)'::regprocedure
+  ),
+  'knowledge review is a security-definer capability'
+);
+select ok(
+  (
+    select array_to_string(proconfig, ',')
+    from pg_proc
+    where oid =
+      'private.review_knowledge_assertion(uuid,text,uuid,uuid,text,text)'::regprocedure
+  ) like '%search_path=""%',
+  'knowledge review has an empty search path'
+);
 
 select $batch$
   {
+    "contractVersion": 2,
     "sourceId": "synthetic-access-source",
     "startedAt": "2026-07-28T18:00:00.000Z",
     "completedAt": "2026-07-28T18:00:01.000Z",
@@ -219,6 +339,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.access.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "synthetic-access-record",
         "name": "Synthetic access record",
         "language": "en"
@@ -296,11 +420,12 @@ where subject_external_key = 'synthetic-access-record'
 \gset
 
 set local role source_reviewer;
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   :'access_assertion_id'::uuid,
   'accepted',
   '33000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'Synthetic acceptance'
 );
 reset role;
@@ -320,6 +445,15 @@ select is(
 );
 select is(
   (
+    select evidence_status
+    from catalog.assertion_reviews
+    where assertion_id = :'access_assertion_id'::uuid
+  ),
+  'single_source',
+  'legacy review capability records single-source evidence'
+);
+select is(
+  (
     select count(*)
     from catalog.review_cases
     where assertion_id = (
@@ -333,8 +467,203 @@ select is(
   'review decision closes its mapping case'
 );
 
+select $flower_measurement_batch$
+{
+  "contractVersion": 2,
+  "sourceId": "synthetic-access-source",
+  "startedAt": "2026-07-28T18:02:00.000Z",
+  "completedAt": "2026-07-28T18:02:01.000Z",
+  "cursor": null,
+  "records": [{
+    "externalRecordKey": "synthetic-flower-review-boundaries",
+    "upstreamState": "present",
+    "retrievedAt": "2026-07-28T18:02:01.000Z",
+    "sourceVersion": "fixture-flower-review-boundaries",
+    "evidence": {
+      "kind": "checksum",
+      "algorithm": "sha256",
+      "digest": "7070017070017070017070017070017070017070017070017070017070017070",
+      "retrievalReference": "https://example.invalid/flower-review-boundaries"
+    },
+    "validFrom": null,
+    "validTo": null,
+    "assertions": [
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[0]",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 70,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-EXACT-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      },
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[1]",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 70.01,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-ABOVE-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      },
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[2]",
+          "extractionMethod": "manual"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 71,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-REJECTED-ABOVE-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      }
+    ]
+  }],
+  "errors": []
+}
+$flower_measurement_batch$ as flower_measurement_batch
+\gset
+
+set local role source_ingestor;
+select * from private.record_source_import(:'flower_measurement_batch'::jsonb);
+reset role;
+
+select
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '70'
+  ) as flower_70_assertion_id,
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '70.01'
+  ) as flower_70_01_assertion_id,
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '71'
+  ) as flower_71_assertion_id
+from catalog.normalized_assertions as assertion
+join catalog.source_records as source_record
+  on source_record.id = assertion.source_record_id
+where source_record.source_id = 'synthetic-access-source'
+  and source_record.external_record_key = 'synthetic-flower-review-boundaries'
+\gset
+
+create temporary table flower_70_01_review_case_baseline as
+select jsonb_agg(to_jsonb(review_case) order by review_case.id) as cases
+from catalog.review_cases as review_case
+where review_case.assertion_id = :'flower_70_01_assertion_id'::uuid;
+
+select lives_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_70_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'confirmed',
+    'exactly 70 percent remains reviewable'
+  ),
+  'an exact 70-percent flower measurement can be accepted'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_70_01_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'single_source',
+    'must reject 70.01 percent'
+  ),
+  '22023',
+  null,
+  'a 70.01-percent flower measurement cannot be accepted'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_71_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'confirmed',
+    'must reject 71 percent'
+  ),
+  '22023',
+  null,
+  'a 71-percent flower measurement cannot be accepted'
+);
+
+select is(
+  (
+    select jsonb_agg(to_jsonb(review_case) order by review_case.id)
+    from catalog.review_cases as review_case
+    where review_case.assertion_id = :'flower_70_01_assertion_id'::uuid
+  ),
+  (select cases from flower_70_01_review_case_baseline),
+  'failed acceptance leaves the existing 70.01 review cases open and unmodified'
+);
+
+select is(
+  (
+    select count(*)
+    from catalog.assertion_reviews
+    where assertion_id in (
+      :'flower_70_01_assertion_id'::uuid,
+      :'flower_71_assertion_id'::uuid
+    )
+  )::bigint,
+  0::bigint,
+  'failed over-limit acceptances leave no assertion-review residue'
+);
+
+select lives_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, null, null, null, %L); '
+      || 'reset role',
+    :'flower_71_assertion_id',
+    'rejected',
+    'explicitly reject unrealistic evidence'
+  ),
+  'an over-limit flower measurement can still be rejected'
+);
+
+select ok(
+  (
+    select decision = 'accepted' and evidence_status = 'confirmed'
+    from catalog.assertion_reviews
+    where assertion_id = :'flower_70_assertion_id'::uuid
+  )
+  and (
+    select decision = 'rejected'
+      and entity_id is null
+      and related_entity_id is null
+      and evidence_status is null
+    from catalog.assertion_reviews
+    where assertion_id = :'flower_71_assertion_id'::uuid
+  ),
+  'the 70-percent acceptance and 71-percent rejection persist with exact review semantics'
+);
+
 select $batch$
   {
+    "contractVersion": 2,
     "sourceId": "synthetic-access-source",
     "startedAt": "2026-07-28T18:05:00.000Z",
     "completedAt": "2026-07-28T18:05:01.000Z",

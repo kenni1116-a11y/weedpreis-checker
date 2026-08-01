@@ -83,6 +83,28 @@ Testdaten gekennzeichnete synthetische Katalogreferenzen verwendet. Auch diese
 durchlaufen Import, Review und Publisher; direkte öffentliche Seed-Schreibwege
 gibt es nicht mehr.
 
+Der Wissensgraph verwendet den geschlossenen Adaptervertrag Version 2. Er
+unterscheidet `origin_population`, `cultivar`, `genetic_sample` und `product`.
+Jede Version-2-Assertion hat eine unveränderte Trace-Angabe mit
+`sourceLocator` und `extractionMethod` (`structured`, `manual` oder
+`ai_assisted`). Akzeptierte Assertions tragen einen der sechs Zustände
+`confirmed`, `single_source`, `disputed`, `historical`, `unknown` oder
+`retracted`; der Zustand bleibt im veröffentlichten Nachweis erhalten.
+
+Dokumentierte Abstammung, genetische Ähnlichkeit und Produktzuordnung sind
+getrennte Ebenen. Genetische Relationen verbinden ausschließlich zwei
+verschiedene `genetic_sample`-Knoten und sind niemals ein Elternschaftsnachweis.
+Produktmessungen bleiben Eigenschaften des Produkts, nicht der Sorte. Nur der
+Reviewer kann einen unveränderlichen Snapshot veröffentlichen; der Browser hat
+nach Anmeldung ausschließlich lesenden Zugriff auf die `api`-Projektion und
+keinen Zugriff auf `catalog` oder `private`.
+
+Dieses Paket verbindet keine Live-Quelle, hinterlegt keine reale Sorte,
+veröffentlicht keine KI-Ausgabe automatisch, plant keinen quellenspezifischen
+Abruf und enthält weder veröffentlichte Bilder noch eine 3D-Visualisierung,
+öffentlichen Pilot oder Profil-/Filteroberfläche. Der nächste Schritt ist eine
+einzelne Quellenrechteentscheidung je Kandidat.
+
 Reale Quellen werden nur einzeln nach dokumentierter Nutzungserlaubnis,
 separater Bildrechteprüfung, synthetischem Vertragstest und einem
 veröffentlichungsfreien Pilotimport angebunden. Das verbindliche Gate und der

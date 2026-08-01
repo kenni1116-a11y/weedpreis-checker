@@ -71,6 +71,7 @@ insert into catalog.entities(id, kind, canonical_name, published) values
 
 select $batch$
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-publication-source",
   "startedAt": "2026-07-28T18:00:00.000Z",
   "completedAt": "2026-07-28T18:00:01.000Z",
@@ -92,68 +93,111 @@ select $batch$
       "assertions": [
         {
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "name": "Synthetic Gorilla Skittlez",
           "language": "en"
         },
         {
           "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.aliases[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "name": "Synthetic G-Skittlez",
-          "language": "en"
+          "language": "en",
+          "aliasType": "market",
+          "market": "synthetic-test-market"
         },
         {
           "kind": "alias",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.aliases[1]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
           "name": "Rejected private nickname",
-          "language": "en"
+          "language": "en",
+          "aliasType": "other",
+          "market": null
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "parent-one",
+          "relatedExternalKey": "parent-one",
           "relationship": "reported_parent",
           "position": 1
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[1]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "parent-two",
+          "relatedExternalKey": "parent-two",
           "relationship": "reported_parent",
           "position": 2
         },
         {
           "kind": "lineage",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.lineage[2]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
-          "parentExternalKey": "historical-origin",
-          "relationship": "historical_origin",
+          "relatedExternalKey": "historical-origin",
+          "relationship": "selection_from",
           "position": null
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[0]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "analyte": "thc",
           "value": 22.4,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-BATCH-001",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[1]",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "child",
           "analyte": "cbd",
           "value": 0.8,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-BATCH-001",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         },
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "$.synthetic.child.measurements[2]",
+            "extractionMethod": "manual"
+          },
           "subjectExternalKey": "child",
           "analyte": "thc",
           "value": 71,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "SYNTHETIC-PUBLICATION-OVER-LIMIT",
           "measuredAt": "2026-07-27T10:00:00.000Z"
         }
       ]
@@ -173,6 +217,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.parentOne.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "parent-one",
         "name": "Synthetic Gorilla Glue",
         "language": "en"
@@ -193,6 +241,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.parentTwo.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "parent-two",
         "name": "Synthetic Skittlez",
         "language": "en"
@@ -213,6 +265,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.historicalOrigin.name",
+          "extractionMethod": "manual"
+        },
         "subjectExternalKey": "historical-origin",
         "name": "Synthetic Afghani",
         "language": "en"
@@ -234,12 +290,20 @@ select $batch$
       "assertions": [
         {
           "kind": "name",
+          "trace": {
+            "sourceLocator": "$.synthetic.product.name",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "product",
           "name": "Synthetic Gorilla Skittlez 22/1",
           "language": "en"
         },
         {
           "kind": "product_cultivar",
+          "trace": {
+            "sourceLocator": "$.synthetic.product.cultivar",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "product",
           "cultivarExternalKey": "child",
           "productForm": "flower"
@@ -261,6 +325,10 @@ select $batch$
       "validTo": null,
       "assertions": [{
         "kind": "name",
+        "trace": {
+          "sourceLocator": "$.synthetic.unreviewed.name",
+          "extractionMethod": "structured"
+        },
         "subjectExternalKey": "unreviewed",
         "name": "Must remain private",
         "language": "en"
@@ -288,7 +356,7 @@ select is(
   'an adapter import alone publishes no public catalog row'
 );
 
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -300,9 +368,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'synthetic canonical review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -314,9 +383,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   null,
+  'single_source',
   'synthetic alias review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -328,9 +398,10 @@ select private.review_source_assertion(
   'rejected',
   null,
   null,
+  null,
   'synthetic rejection'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -342,9 +413,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000002',
+  'single_source',
   'synthetic parent one review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -356,9 +428,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000003',
+  'single_source',
   'synthetic parent two review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -370,9 +443,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000004',
+  'single_source',
   'synthetic historical origin review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -382,11 +456,12 @@ select private.review_source_assertion(
       and assertion.assertion_index = 6
   ),
   'accepted',
-  '51000000-0000-4000-8000-000000000001',
+  '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic THC review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -396,11 +471,12 @@ select private.review_source_assertion(
       and assertion.assertion_index = 7
   ),
   'accepted',
-  '51000000-0000-4000-8000-000000000001',
+  '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic CBD review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -412,9 +488,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000002',
   null,
+  'single_source',
   'synthetic parent name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -426,9 +503,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000003',
   null,
+  'single_source',
   'synthetic parent name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -440,9 +518,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000004',
   null,
+  'single_source',
   'synthetic origin name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -454,9 +533,10 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000005',
   null,
+  'single_source',
   'synthetic product name review'
 );
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -468,6 +548,7 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000005',
   '51000000-0000-4000-8000-000000000001',
+  'single_source',
   'synthetic flower mapping review'
 );
 
@@ -520,19 +601,19 @@ select is(
   (
     select sourced_thc_label
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
   '22.4 %',
-  'reviewed sourced THC remains distinct from community values'
+  'reviewed product THC remains distinct from community values'
 );
 select is(
   (
     select sourced_cbd_label
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
   '0.8 %',
-  'reviewed sourced CBD remains distinct from community values'
+  'reviewed product CBD remains distinct from community values'
 );
 select ok(
   (
@@ -598,18 +679,21 @@ select ok(
       and sourced_value_evidence #>> '{0,attribution}'
         = 'Synthetic publication attribution'
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
-  'sourced labels carry public citation metadata'
+  'sourced product labels carry public citation metadata'
 );
-select is(
+select ok(
   (
-    select sourced_value_evidence #>> '{0,citationUrl}'
+    select not exists (
+      select 1
+      from jsonb_array_elements(sourced_value_evidence) as evidence
+      where evidence ->> 'citationUrl' = 'http://example.invalid/product'
+    )
     from api.catalog_references
     where id = '51000000-0000-4000-8000-000000000005'
   ),
-  null,
-  'unsafe non-HTTPS retrieval references are not published'
+  'unsafe non-HTTPS product references are not copied into measurement evidence'
 );
 select ok(
   exists (
@@ -627,9 +711,9 @@ select ok(
   (
     select sourced_thc_label not like '%71%'
     from api.catalog_references
-    where id = '51000000-0000-4000-8000-000000000001'
+    where id = '51000000-0000-4000-8000-000000000005'
   ),
-  'a flower value above 70 is absent from the public label'
+  'a flower value above 70 is absent from the public product label'
 );
 
 select lives_ok(
@@ -649,6 +733,7 @@ select is(
 
 select $conflict$
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-publication-source",
   "startedAt": "2026-07-28T18:01:00.000Z",
   "completedAt": "2026-07-28T18:01:01.000Z",
@@ -668,8 +753,12 @@ select $conflict$
     "validTo": null,
     "assertions": [{
       "kind": "lineage",
+      "trace": {
+        "sourceLocator": "$.synthetic.conflict.lineage[0]",
+        "extractionMethod": "manual"
+      },
       "subjectExternalKey": "child",
-      "parentExternalKey": "parent-two",
+      "relatedExternalKey": "parent-two",
       "relationship": "reported_parent",
       "position": 1
     }]
@@ -682,7 +771,7 @@ $conflict$ as conflict_batch
 set local role source_ingestor;
 select * from private.record_source_import(:'conflict_batch'::jsonb);
 reset role;
-select private.review_source_assertion(
+select private.review_knowledge_assertion(
   (
     select assertion.id
     from catalog.normalized_assertions assertion
@@ -694,16 +783,15 @@ select private.review_source_assertion(
   'accepted',
   '51000000-0000-4000-8000-000000000001',
   '51000000-0000-4000-8000-000000000003',
+  'disputed',
   'synthetic conflicting parent'
 );
 
-select throws_ok(
+select lives_ok(
   $$set local role source_reviewer;
     select private.publish_reviewed_catalog();
     reset role$$,
-  '22023',
-  'Invalid catalog snapshot',
-  'a deliberately invalid snapshot is rejected'
+  'a disputed version-2 lineage review stays outside the legacy catalog snapshot'
 );
 select is(
   (
@@ -712,7 +800,16 @@ select is(
     where id = '51000000-0000-4000-8000-000000000001'
   ),
   'Synthetic Gorilla Skittlez',
-  'failed publication leaves the prior snapshot unchanged'
+  'catalog republication keeps the accepted canonical name unchanged'
+);
+select is(
+  (
+    select preferred_parent_one_name
+    from api.catalog_references
+    where id = '51000000-0000-4000-8000-000000000001'
+  ),
+  'Synthetic Gorilla Glue',
+  'disputed lineage does not overwrite the confirmed legacy parent projection'
 );
 
 select ok(

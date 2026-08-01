@@ -1,4 +1,5 @@
 {
+  "contractVersion": 2,
   "sourceId": "synthetic-contract-source",
   "startedAt": "2026-07-28T18:10:00.000Z",
   "completedAt": "2026-07-28T18:10:01.000Z",
@@ -20,11 +21,16 @@
       "assertions": [
         {
           "kind": "measurement",
+          "trace": {
+            "sourceLocator": "https://example.invalid/synthetic-flower-above-limit#thc",
+            "extractionMethod": "structured"
+          },
           "subjectExternalKey": "synthetic-flower-above-limit",
           "analyte": "thc",
           "value": 70.01,
           "unit": "percent",
           "productForm": "flower",
+          "batchIdentifier": "synthetic-batch-over-limit",
           "measuredAt": null
         }
       ]

@@ -19,12 +19,125 @@ Nutzungserlaubnis.
   Review-Notizen, Staging-Tabellen oder Management-Funktionen.
 - Erst eine akzeptierte Prüfung und ein atomar erfolgreicher Publisher-Lauf
   dürfen öffentliche Suchdaten verändern.
-- Blütenwerte über 70 Prozent bleiben Review-Fälle und dürfen nicht
-  veröffentlicht werden.
+- Blütenwerte über 70 Prozent werden als Review-Fälle importiert, dürfen nicht
+  akzeptiert werden und lassen auch den Publisher als letzte Schutzschicht
+  abbrechen.
 - Bilder werden unabhängig von strukturierten Daten geprüft. Eine
   Datennutzungserlaubnis schließt Bildrechte nicht ein.
 - Upstream-Löschungen entfernen niemals automatisch eine veröffentlichte
   Sorte, ein Produkt oder einen persönlichen Bestand.
+
+## Wissensgraph-Vertrag Version 2
+
+Jeder neue Adapterbatch verwendet genau `contractVersion: 2`. Jede Assertion
+enthält die vollständige, unveränderte Trace-Angabe:
+
+```json
+{
+  "trace": {
+    "sourceLocator": "$.records[0].name",
+    "extractionMethod": "structured"
+  }
+}
+```
+
+`sourceLocator` ist der exakte Fundort in der Quelle, keine abgeleitete URL.
+`extractionMethod` ist genau `structured`, `manual` oder `ai_assisted`.
+`sampledAt` und `measuredAt` verwenden das dokumentierte ISO-Zeitformat mit
+Zeitzone und müssen ein wirklich existierendes Kalenderdatum enthalten.
+Eine KI-gestützte Extraktion ist lediglich Herkunftsmetadatum: Sie veröffentlicht
+nie automatisch etwas und ersetzt weder Review noch Quellenrechteentscheidung.
+
+Der Vertrag kennt ausschließlich diese vier kanonischen Knotenarten:
+
+- `origin_population`
+- `cultivar`
+- `genetic_sample`
+- `product`
+
+Die vollständige Assertion-Vokabel lautet: `entity_kind`, `name`, `alias`,
+`traditional_classification`, `origin_region`, `era`, `sample_reference`,
+`lineage`, `genetic_relation`, `product_cultivar`, `product_market` und
+`measurement`. Ein akzeptierter Graph-Fakt trägt genau einen der Zustände
+`confirmed`, `single_source`, `disputed`, `historical`, `unknown` oder
+`retracted`; auch strittige, historische, unbekannte und zurückgezogene Fakten
+werden nicht in einen unmarkierten Wahrheitsanspruch umgedeutet.
+
+### Review und Typgrenzen
+
+Der Import speichert nur unveränderliche Belege und Review-Fälle. Er kann weder
+prüfen noch veröffentlichen. Die Review-Berechtigung ordnet Version-2-
+Assertions kanonischen UUIDs zu, prüft die folgende Typkompatibilität und kann
+erst danach einen Snapshot veröffentlichen:
+
+- `entity_kind` muss zur kanonischen Knotenart passen; `product_market` und
+  `measurement` gehören zu `product`, `sample_reference` zu `genetic_sample`.
+- Dokumentierte Linienbeziehungen liegen ausschließlich in
+  `documented_lineage`: `reported_parent`, `cross` und `backcross` verbinden
+  zwei `cultivar`; `selection_from` verbindet einen `cultivar` mit `cultivar`
+  oder `origin_population`; `historical_origin` endet bei einer anderen
+  `origin_population`; `population_membership` führt von `cultivar` oder
+  `genetic_sample` zu `origin_population`; `unknown_parent` hat nur einen
+  `cultivar`-Ausgangspunkt und kein Ziel.
+- `genetic_relation` liegt ausschließlich in `genetic_similarity` und verbindet
+  zwei verschiedene `genetic_sample`. Genetische Ähnlichkeit oder ein
+  `sample_match` ist nie dokumentierte Elternschaft und wird nie in eine
+  `cultivar`-Elternrelation umgewandelt.
+- `product_cultivar` liegt ausschließlich in `product_mapping` und verbindet
+  `product` mit `cultivar`. Messwerte und Marktangaben bleiben Produktdaten und
+  werden nicht zu Sorteneigenschaften.
+- Assertions ohne Beziehungssemantik erhalten kein Ziel. Abgelehnte Assertions
+  erhalten weder kanonische Zuordnung noch Evidenzstatus.
+
+Die Veröffentlichung schreibt einen unveränderlichen privaten Snapshot und
+ersetzt die aktuelle öffentliche Projektion atomar. Die drei Ebenen bleiben
+auch dort getrennt. `authenticated` darf die veröffentlichte, schreibgeschützte
+`api`-Projektion und die Lese-RPC abrufen; Browserrollen erhalten keinen Zugriff
+auf `catalog` oder `private` und keinen Schreibpfad in den Graphen.
+Der ältere Suchkatalog übernimmt aus Version 2 ausschließlich kompatible
+Sorten-/Produkt-Aussagen mit `confirmed` oder `single_source`; Graph-Knoten,
+Graph-Beziehungen und die vier übrigen Evidenzzustände bleiben dort außen vor.
+
+### Fokussierte Vertragsprüfungen
+
+Diese Befehle testen Adaptervertrag, Browser-Mapping, Repository und die
+synthetische End-to-End-Publikation gezielt:
+
+```sh
+pnpm exec deno test \
+  --config supabase/deno.json \
+  supabase/functions/_shared/source-adapters/validate.test.ts \
+  supabase/functions/source-import/source-import.test.ts
+pnpm test -- src/knowledge/knowledge-graph.test.ts
+pnpm test -- src/knowledge/supabase-knowledge-repository.test.ts
+pnpm exec supabase test db \
+  supabase/tests/database/06_knowledge_graph_publication.test.sql
+```
+
+Für die komplette lokale Abnahme gelten zusätzlich `pnpm test`, `pnpm build`,
+`pnpm test:functions`, `pnpm test:db` sowie:
+
+```sh
+pnpm exec supabase db lint \
+  --schema api,catalog,private,public \
+  --level error \
+  --fail-on error
+git diff --check
+```
+
+## Aktueller Paketstand und nächste Abhängigkeit
+
+Es ist keine Live-Quelle verbunden und keine reale Sorte im Graphen angelegt.
+Es gibt keine automatische Veröffentlichung von KI-Ausgaben, keinen
+quellenspezifischen Zeitplan, kein veröffentlichtes Bild, keine
+3D-Visualisierung und keinen öffentlichen Pilot. Insbesondere sind keine
+Profil- oder Filteroberfläche und keine mobile Abnahme Teil dieses Pakets.
+
+Ein externer Quellenkandidat bleibt `inactive`, bis das spätere
+Quellenrechtepaket diese Quelle einzeln für Zugriff, Felder, Speicherung,
+Attribution, Text- und Bildrechte sowie Rollback freigibt. Eine technische
+Verbindung, ein Vertragstest oder ein erfolgreicher Pilotimport ersetzt diese
+Entscheidung nicht.
 
 ## Freigabeakte
 
