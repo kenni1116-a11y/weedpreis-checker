@@ -1,6 +1,20 @@
 begin;
 select no_plan();
 
+create temporary table task8_seed_snapshot_baseline as
+select count(*)::bigint as snapshot_count
+from catalog.knowledge_publication_snapshots;
+
+update catalog.sources
+set status = 'blocked'
+where id = 'synthetic-knowledge-graph-seed-source';
+
+delete from api.published_knowledge_edges;
+delete from api.published_knowledge_claims;
+delete from api.published_knowledge_nodes;
+delete from api.published_knowledge_snapshot;
+delete from catalog.knowledge_current_snapshot;
+
 insert into catalog.sources(
   id,
   display_name,
@@ -2586,7 +2600,10 @@ select throws_ok(
 );
 select is(
   (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
-  1::bigint,
+  (
+    select snapshot_count + 1
+    from task8_seed_snapshot_baseline
+  ),
   'a malformed publication does not leave private snapshot metadata behind'
 );
 select is(
@@ -2643,7 +2660,10 @@ select isnt(
 );
 select is(
   (select count(*) from catalog.knowledge_publication_snapshots)::bigint,
-  2::bigint,
+  (
+    select snapshot_count + 2
+    from task8_seed_snapshot_baseline
+  ),
   'a second successful publication preserves both immutable private snapshots'
 );
 select ok(
@@ -2709,6 +2729,1081 @@ select is(
     from task5_publication_state
   ),
   'knowledge publication preserves the existing inventory catalog projection'
+);
+
+create temporary table task8_previous_graph_state as
+select
+  snapshot_id,
+  (select count(*) from api.published_knowledge_nodes) as node_count,
+  (select count(*) from api.published_knowledge_claims) as claim_count,
+  (select count(*) from api.published_knowledge_edges) as edge_count
+from api.published_knowledge_snapshot
+where singleton;
+
+create temporary table task8_catalog_parentage_before as
+select jsonb_agg(
+  jsonb_build_object(
+    'id', reference.id,
+    'preferredParentOneName', reference.preferred_parent_one_name,
+    'preferredParentTwoName', reference.preferred_parent_two_name
+  )
+  order by reference.id
+) as parentage
+from api.catalog_references as reference;
+
+insert into catalog.sources(
+  id,
+  display_name,
+  owner_name,
+  access_method,
+  permitted_frequency,
+  license_status,
+  license_reference,
+  raw_storage_allowed,
+  attribution_rules,
+  image_rights_status,
+  confidence_class,
+  responsible_reviewer,
+  status
+) values (
+  'synthetic-task8-knowledge-graph',
+  'Task 8 synthetic knowledge source',
+  'Task 8 synthetic owner',
+  'local synthetic fixture',
+  'manual tests only',
+  'approved',
+  'https://example.invalid/task8-license',
+  true,
+  'Task 8 synthetic-only attribution',
+  'not included',
+  'supporting',
+  'task8-synthetic-reviewer',
+  'active'
+);
+
+insert into catalog.entities(id, kind, canonical_name, published) values
+  (
+    '62000000-0000-4000-8000-000000000001',
+    'origin_population',
+    'Task 8 synthetic origin placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000002',
+    'cultivar',
+    'Task 8 synthetic parent placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000003',
+    'cultivar',
+    'Task 8 synthetic child placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000004',
+    'genetic_sample',
+    'Task 8 synthetic sample one placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000005',
+    'genetic_sample',
+    'Task 8 synthetic sample two placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000006',
+    'product',
+    'Task 8 synthetic product placeholder',
+    false
+  ),
+  (
+    '62000000-0000-4000-8000-000000000007',
+    'cultivar',
+    'Task 8 synthetic alternate parent placeholder',
+    false
+  );
+
+set local role source_ingestor;
+select *
+from private.record_source_import(
+  $task8$
+  {
+    "contractVersion": 2,
+    "sourceId": "synthetic-task8-knowledge-graph",
+    "startedAt": "2026-07-30T10:00:00.000Z",
+    "completedAt": "2026-07-30T10:00:07.000Z",
+    "cursor": null,
+    "records": [
+      {
+        "externalRecordKey": "synthetic-task8-origin-001",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:01.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-origin"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[0].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-origin-001",
+            "entityKind": "origin_population"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[0].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-origin-001",
+            "name": "Synthetic Origin Population",
+            "language": "en"
+          },
+          {
+            "kind": "traditional_classification",
+            "trace": {
+              "sourceLocator": "$.records[0].classification",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-origin-001",
+            "classification": "sativa"
+          },
+          {
+            "kind": "origin_region",
+            "trace": {
+              "sourceLocator": "$.records[0].region",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-origin-001",
+            "regionName": "Synthetic Highland",
+            "regionCode": null
+          },
+          {
+            "kind": "era",
+            "trace": {
+              "sourceLocator": "$.records[0].era",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-origin-001",
+            "startYear": -1200,
+            "endYear": -800,
+            "label": "Synthetic historical era"
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-parent-001",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:02.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-parent"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[1].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-parent-001",
+            "entityKind": "cultivar"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[1].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-parent-001",
+            "name": "Synthetic Parent",
+            "language": "en"
+          },
+          {
+            "kind": "alias",
+            "trace": {
+              "sourceLocator": "$.records[1].aliases[0]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-parent-001",
+            "name": "Synthetic Parent DE",
+            "language": "de",
+            "aliasType": "market",
+            "market": "Germany"
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-child-001",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:03.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-child"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[2].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "entityKind": "cultivar"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[2].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "name": "Synthetic Child",
+            "language": "en"
+          },
+          {
+            "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.records[2].lineage[0]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "relatedExternalKey": "synthetic-task8-parent-001",
+            "relationship": "reported_parent",
+            "position": 1
+          },
+          {
+            "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.records[2].lineage[1]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "relatedExternalKey": "synthetic-task8-origin-001",
+            "relationship": "population_membership",
+            "position": null
+          },
+          {
+            "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.records[2].lineage[2]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "relatedExternalKey": null,
+            "relationship": "unknown_parent",
+            "position": 2
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-sample-001",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:04.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-sample-one"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[3].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-001",
+            "entityKind": "genetic_sample"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[3].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-001",
+            "name": "Synthetic Sample One",
+            "language": "en"
+          },
+          {
+            "kind": "sample_reference",
+            "trace": {
+              "sourceLocator": "$.records[3].sample",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-001",
+            "sampleIdentifier": "SYN-001",
+            "datasetName": "Synthetic Dataset",
+            "datasetVersion": "1.0",
+            "submitter": null,
+            "laboratory": "Synthetic Lab",
+            "sampledAt": "2026-07-01T00:00:00.000Z"
+          },
+          {
+            "kind": "genetic_relation",
+            "trace": {
+              "sourceLocator": "$.records[3].relations[0]",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-001",
+            "relatedExternalKey": "synthetic-task8-sample-002",
+            "relationship": "genetic_similarity",
+            "method": "synthetic-method",
+            "datasetName": "Synthetic Dataset",
+            "datasetVersion": "1.0",
+            "metricName": "synthetic-similarity",
+            "value": 0.875,
+            "unit": "score"
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-sample-002",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:05.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-sample-two"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[4].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-002",
+            "entityKind": "genetic_sample"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[4].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-002",
+            "name": "Synthetic Sample Two",
+            "language": "en"
+          },
+          {
+            "kind": "sample_reference",
+            "trace": {
+              "sourceLocator": "$.records[4].sample",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-002",
+            "sampleIdentifier": "SYN-002",
+            "datasetName": "Synthetic Dataset",
+            "datasetVersion": "1.0",
+            "submitter": null,
+            "laboratory": "Synthetic Lab",
+            "sampledAt": "2026-07-02T00:00:00.000Z"
+          },
+          {
+            "kind": "genetic_relation",
+            "trace": {
+              "sourceLocator": "$.records[4].relations[0]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-sample-002",
+            "relatedExternalKey": "synthetic-task8-sample-001",
+            "relationship": "genetic_similarity",
+            "method": "synthetic-parentage-defense",
+            "datasetName": "Synthetic Defense Dataset",
+            "datasetVersion": "2.0",
+            "metricName": "synthetic-distance",
+            "value": 0.125,
+            "unit": "distance"
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-product-001",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:06.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-product"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[5].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-product-001",
+            "entityKind": "product"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[5].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-product-001",
+            "name": "Synthetic Medical Flower",
+            "language": "en"
+          },
+          {
+            "kind": "product_cultivar",
+            "trace": {
+              "sourceLocator": "$.records[5].cultivar",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-product-001",
+            "cultivarExternalKey": "synthetic-task8-child-001",
+            "productForm": "flower"
+          },
+          {
+            "kind": "product_market",
+            "trace": {
+              "sourceLocator": "$.records[5].market",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-product-001",
+            "countryCode": "DE",
+            "medical": true
+          },
+          {
+            "kind": "measurement",
+            "trace": {
+              "sourceLocator": "$.records[5].measurement.thc",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-product-001",
+            "analyte": "thc",
+            "value": 20.5,
+            "unit": "percent",
+            "productForm": "flower",
+            "batchIdentifier": "SYN-BATCH-001",
+            "measuredAt": "2026-07-30T00:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "externalRecordKey": "synthetic-task8-parent-002",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:00:07.000Z",
+        "sourceVersion": "task8-v1",
+        "evidence": {
+          "kind": "raw",
+          "mediaType": "application/json",
+          "payload": {"fixture": "task8-alternate-parent"}
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "entity_kind",
+            "trace": {
+              "sourceLocator": "$.records[6].kind",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-parent-002",
+            "entityKind": "cultivar"
+          },
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.records[6].name",
+              "extractionMethod": "structured"
+            },
+            "subjectExternalKey": "synthetic-task8-parent-002",
+            "name": "Synthetic Alternate Parent",
+            "language": "en"
+          },
+          {
+            "kind": "lineage",
+            "trace": {
+              "sourceLocator": "$.records[6].lineage[0]",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "relatedExternalKey": "synthetic-task8-parent-002",
+            "relationship": "reported_parent",
+            "position": 1
+          }
+        ]
+      }
+    ],
+    "errors": []
+  }
+  $task8$::jsonb
+);
+reset role;
+
+select is(
+  (
+    select count(*)
+    from catalog.normalized_assertions as assertion
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+  )::bigint,
+  29::bigint,
+  'the complete task-8 version-2 fixture stores every synthetic assertion'
+);
+
+select is(
+  (
+    select count(*)
+    from catalog.normalized_assertions as assertion
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+      and assertion.assertion_kind = 'lineage'
+      and assertion.subject_external_key = 'synthetic-task8-child-001'
+      and assertion.payload ->> 'relationship' = 'reported_parent'
+      and assertion.payload ->> 'position' = '1'
+  )::bigint,
+  2::bigint,
+  'both immutable conflicting reported-parent assertions are stored'
+);
+
+select ok(
+  exists (
+    select 1
+    from catalog.review_cases as review_case
+    join catalog.normalized_assertions as assertion
+      on assertion.id = review_case.assertion_id
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+      and review_case.case_kind = 'conflicting_lineage'
+      and review_case.detail_code = 'conflicting_parent_for_position'
+  ),
+  'the contradictory parent fixture creates a conflicting-lineage review case'
+);
+
+select is(
+  (
+    select count(*)
+    from api.published_knowledge_edges
+    where from_node_id = '62000000-0000-4000-8000-000000000003'
+      and relationship = 'reported_parent'
+  )::bigint,
+  0::bigint,
+  'neither conflicting parent assertion enters the graph before review'
+);
+
+select throws_ok(
+  format(
+    'select private.review_knowledge_assertion(%L, %L, %L, %L, %L, %L)',
+    (
+      select assertion.id
+      from catalog.normalized_assertions as assertion
+      join catalog.source_records as record
+        on record.id = assertion.source_record_id
+      where record.source_id = 'synthetic-task8-knowledge-graph'
+        and record.external_record_key = 'synthetic-task8-sample-002'
+        and assertion.assertion_index = 3
+    ),
+    'accepted',
+    '62000000-0000-4000-8000-000000000003',
+    '62000000-0000-4000-8000-000000000002',
+    'confirmed',
+    'invalid synthetic similarity-to-parentage conversion'
+  ),
+  '22023',
+  null,
+  'genetic similarity cannot be reviewed against two cultivar UUIDs'
+);
+
+select private.review_knowledge_assertion(
+  assertion.id,
+  'accepted',
+  review.entity_id,
+  review.related_entity_id,
+  review.evidence_status,
+  'Task 8 explicit synthetic review'
+)
+from (
+  values
+    ('synthetic-task8-origin-001', 0, '62000000-0000-4000-8000-000000000001'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-origin-001', 1, '62000000-0000-4000-8000-000000000001'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-origin-001', 2, '62000000-0000-4000-8000-000000000001'::uuid, null::uuid, 'historical'),
+    ('synthetic-task8-origin-001', 3, '62000000-0000-4000-8000-000000000001'::uuid, null::uuid, 'historical'),
+    ('synthetic-task8-origin-001', 4, '62000000-0000-4000-8000-000000000001'::uuid, null::uuid, 'retracted'),
+    ('synthetic-task8-parent-001', 0, '62000000-0000-4000-8000-000000000002'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-parent-001', 1, '62000000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-parent-001', 2, '62000000-0000-4000-8000-000000000002'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-child-001', 0, '62000000-0000-4000-8000-000000000003'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-child-001', 1, '62000000-0000-4000-8000-000000000003'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-child-001', 2, '62000000-0000-4000-8000-000000000003'::uuid, '62000000-0000-4000-8000-000000000002'::uuid, 'disputed'),
+    ('synthetic-task8-child-001', 3, '62000000-0000-4000-8000-000000000003'::uuid, '62000000-0000-4000-8000-000000000001'::uuid, 'historical'),
+    ('synthetic-task8-child-001', 4, '62000000-0000-4000-8000-000000000003'::uuid, null::uuid, 'unknown'),
+    ('synthetic-task8-sample-001', 0, '62000000-0000-4000-8000-000000000004'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-sample-001', 1, '62000000-0000-4000-8000-000000000004'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-sample-001', 2, '62000000-0000-4000-8000-000000000004'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-sample-001', 3, '62000000-0000-4000-8000-000000000004'::uuid, '62000000-0000-4000-8000-000000000005'::uuid, 'confirmed'),
+    ('synthetic-task8-sample-002', 0, '62000000-0000-4000-8000-000000000005'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-sample-002', 1, '62000000-0000-4000-8000-000000000005'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-sample-002', 2, '62000000-0000-4000-8000-000000000005'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-sample-002', 3, '62000000-0000-4000-8000-000000000005'::uuid, '62000000-0000-4000-8000-000000000004'::uuid, 'single_source'),
+    ('synthetic-task8-product-001', 0, '62000000-0000-4000-8000-000000000006'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-product-001', 1, '62000000-0000-4000-8000-000000000006'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-product-001', 2, '62000000-0000-4000-8000-000000000006'::uuid, '62000000-0000-4000-8000-000000000003'::uuid, 'confirmed'),
+    ('synthetic-task8-product-001', 3, '62000000-0000-4000-8000-000000000006'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-product-001', 4, '62000000-0000-4000-8000-000000000006'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-parent-002', 0, '62000000-0000-4000-8000-000000000007'::uuid, null::uuid, 'confirmed'),
+    ('synthetic-task8-parent-002', 1, '62000000-0000-4000-8000-000000000007'::uuid, null::uuid, 'single_source'),
+    ('synthetic-task8-parent-002', 2, '62000000-0000-4000-8000-000000000003'::uuid, '62000000-0000-4000-8000-000000000007'::uuid, 'disputed')
+) as review(
+  external_record_key,
+  assertion_index,
+  entity_id,
+  related_entity_id,
+  evidence_status
+)
+join catalog.source_records as record
+  on record.source_id = 'synthetic-task8-knowledge-graph'
+ and record.external_record_key = review.external_record_key
+join catalog.normalized_assertions as assertion
+  on assertion.source_record_id = record.id
+ and assertion.assertion_index = review.assertion_index;
+
+select is(
+  (
+    select count(*)
+    from catalog.assertion_reviews as review
+    join catalog.normalized_assertions as assertion
+      on assertion.id = review.assertion_id
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+      and review.decision = 'accepted'
+      and review.evidence_status is not null
+  )::bigint,
+  29::bigint,
+  'every task-8 fixture assertion has an explicit accepted evidence status'
+);
+
+select is(
+  (
+    select count(*)
+    from catalog.assertion_reviews as review
+    join catalog.normalized_assertions as assertion
+      on assertion.id = review.assertion_id
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+      and assertion.assertion_kind = 'lineage'
+      and assertion.subject_external_key = 'synthetic-task8-child-001'
+      and assertion.payload ->> 'relationship' = 'reported_parent'
+      and assertion.payload ->> 'position' = '1'
+      and review.decision = 'accepted'
+      and review.evidence_status = 'disputed'
+  )::bigint,
+  2::bigint,
+  'both conflicting parents remain separately reviewed as disputed'
+);
+
+set local role source_reviewer;
+select private.publish_reviewed_knowledge_graph() as task8_snapshot_id
+\gset
+reset role;
+
+create temporary table task8_valid_graph_state as
+select
+  :'task8_snapshot_id'::uuid as snapshot_id,
+  (select count(*) from api.published_knowledge_nodes) as node_count,
+  (select count(*) from api.published_knowledge_claims) as claim_count,
+  (select count(*) from api.published_knowledge_edges) as edge_count;
+
+create temporary table task8_valid_rpc as
+select api.get_published_knowledge_graph() as graph;
+
+select ok(
+  (
+    select
+      graph #>> '{snapshotId}' = :'task8_snapshot_id'
+      and jsonb_array_length(graph -> 'nodes') = (
+        select node_count from task8_valid_graph_state
+      )
+      and jsonb_array_length(graph -> 'claims') = (
+        select claim_count from task8_valid_graph_state
+      )
+      and jsonb_array_length(graph -> 'edges') = (
+        select edge_count from task8_valid_graph_state
+      )
+    from task8_valid_rpc
+  ),
+  'the RPC returns the complete task-8 publication snapshot'
+);
+
+select ok(
+  (
+    select
+      valid.node_count = previous.node_count + 7
+      and valid.claim_count = previous.claim_count + 22
+      and valid.edge_count = previous.edge_count + 7
+    from task8_valid_graph_state as valid
+    cross join task8_previous_graph_state as previous
+  ),
+  'the complete fixture adds exactly seven nodes, twenty-two claims, and seven edges'
+);
+
+select set_eq(
+  $$
+    select node.value
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'nodes') as node(value)
+    where node.value ->> 'id' in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002',
+      '62000000-0000-4000-8000-000000000003',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005',
+      '62000000-0000-4000-8000-000000000006',
+      '62000000-0000-4000-8000-000000000007'
+    )
+  $$,
+  $$
+    values
+      ('{"id":"62000000-0000-4000-8000-000000000001","kind":"origin_population","canonicalName":"Synthetic Origin Population"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000002","kind":"cultivar","canonicalName":"Synthetic Parent"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000003","kind":"cultivar","canonicalName":"Synthetic Child"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000004","kind":"genetic_sample","canonicalName":"Synthetic Sample One"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000005","kind":"genetic_sample","canonicalName":"Synthetic Sample Two"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000006","kind":"product","canonicalName":"Synthetic Medical Flower"}'::jsonb),
+      ('{"id":"62000000-0000-4000-8000-000000000007","kind":"cultivar","canonicalName":"Synthetic Alternate Parent"}'::jsonb)
+  $$,
+  'the RPC contains exactly the seven intended synthetic nodes'
+);
+
+select set_eq(
+  $$
+    select jsonb_build_object(
+      'nodeId', claim.value ->> 'nodeId',
+      'kind', claim.value ->> 'kind',
+      'value', claim.value -> 'value',
+      'evidenceStatus', claim.value ->> 'evidenceStatus',
+      'sourceLocator', claim.value #>> '{evidence,sourceLocator}',
+      'extractionMethod', claim.value #>> '{evidence,extractionMethod}',
+      'retrievedAt', claim.value #>> '{evidence,retrievedAt}'
+    )
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'claims') as claim(value)
+    where claim.value ->> 'nodeId' in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002',
+      '62000000-0000-4000-8000-000000000003',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005',
+      '62000000-0000-4000-8000-000000000006',
+      '62000000-0000-4000-8000-000000000007'
+    )
+  $$,
+  $$
+    select jsonb_build_object(
+      'nodeId', expected.node_id,
+      'kind', expected.claim_kind,
+      'value', expected.claim_value,
+      'evidenceStatus', expected.evidence_status,
+      'sourceLocator', expected.source_locator,
+      'extractionMethod', expected.extraction_method,
+      'retrievedAt', expected.retrieved_at
+    )
+    from (
+      values
+        ('62000000-0000-4000-8000-000000000001', 'entity_kind', '{"entityKind":"origin_population"}'::jsonb, 'confirmed', '$.records[0].kind', 'structured', '2026-07-30T10:00:01+00:00'),
+        ('62000000-0000-4000-8000-000000000001', 'name', '{"name":"Synthetic Origin Population","language":"en"}'::jsonb, 'single_source', '$.records[0].name', 'structured', '2026-07-30T10:00:01+00:00'),
+        ('62000000-0000-4000-8000-000000000001', 'traditional_classification', '{"classification":"sativa"}'::jsonb, 'historical', '$.records[0].classification', 'manual', '2026-07-30T10:00:01+00:00'),
+        ('62000000-0000-4000-8000-000000000001', 'origin_region', '{"regionName":"Synthetic Highland","regionCode":null}'::jsonb, 'historical', '$.records[0].region', 'manual', '2026-07-30T10:00:01+00:00'),
+        ('62000000-0000-4000-8000-000000000001', 'era', '{"startYear":-1200,"endYear":-800,"label":"Synthetic historical era"}'::jsonb, 'retracted', '$.records[0].era', 'manual', '2026-07-30T10:00:01+00:00'),
+        ('62000000-0000-4000-8000-000000000002', 'entity_kind', '{"entityKind":"cultivar"}'::jsonb, 'confirmed', '$.records[1].kind', 'structured', '2026-07-30T10:00:02+00:00'),
+        ('62000000-0000-4000-8000-000000000002', 'name', '{"name":"Synthetic Parent","language":"en"}'::jsonb, 'single_source', '$.records[1].name', 'structured', '2026-07-30T10:00:02+00:00'),
+        ('62000000-0000-4000-8000-000000000002', 'alias', '{"name":"Synthetic Parent DE","language":"de","aliasType":"market","market":"Germany"}'::jsonb, 'single_source', '$.records[1].aliases[0]', 'manual', '2026-07-30T10:00:02+00:00'),
+        ('62000000-0000-4000-8000-000000000003', 'entity_kind', '{"entityKind":"cultivar"}'::jsonb, 'confirmed', '$.records[2].kind', 'structured', '2026-07-30T10:00:03+00:00'),
+        ('62000000-0000-4000-8000-000000000003', 'name', '{"name":"Synthetic Child","language":"en"}'::jsonb, 'single_source', '$.records[2].name', 'structured', '2026-07-30T10:00:03+00:00'),
+        ('62000000-0000-4000-8000-000000000004', 'entity_kind', '{"entityKind":"genetic_sample"}'::jsonb, 'confirmed', '$.records[3].kind', 'structured', '2026-07-30T10:00:04+00:00'),
+        ('62000000-0000-4000-8000-000000000004', 'name', '{"name":"Synthetic Sample One","language":"en"}'::jsonb, 'single_source', '$.records[3].name', 'structured', '2026-07-30T10:00:04+00:00'),
+        ('62000000-0000-4000-8000-000000000004', 'sample_reference', '{"sampleIdentifier":"SYN-001","datasetName":"Synthetic Dataset","datasetVersion":"1.0","submitter":null,"laboratory":"Synthetic Lab","sampledAt":"2026-07-01T00:00:00.000Z"}'::jsonb, 'confirmed', '$.records[3].sample', 'structured', '2026-07-30T10:00:04+00:00'),
+        ('62000000-0000-4000-8000-000000000005', 'entity_kind', '{"entityKind":"genetic_sample"}'::jsonb, 'confirmed', '$.records[4].kind', 'structured', '2026-07-30T10:00:05+00:00'),
+        ('62000000-0000-4000-8000-000000000005', 'name', '{"name":"Synthetic Sample Two","language":"en"}'::jsonb, 'single_source', '$.records[4].name', 'structured', '2026-07-30T10:00:05+00:00'),
+        ('62000000-0000-4000-8000-000000000005', 'sample_reference', '{"sampleIdentifier":"SYN-002","datasetName":"Synthetic Dataset","datasetVersion":"1.0","submitter":null,"laboratory":"Synthetic Lab","sampledAt":"2026-07-02T00:00:00.000Z"}'::jsonb, 'confirmed', '$.records[4].sample', 'structured', '2026-07-30T10:00:05+00:00'),
+        ('62000000-0000-4000-8000-000000000006', 'entity_kind', '{"entityKind":"product"}'::jsonb, 'confirmed', '$.records[5].kind', 'structured', '2026-07-30T10:00:06+00:00'),
+        ('62000000-0000-4000-8000-000000000006', 'name', '{"name":"Synthetic Medical Flower","language":"en"}'::jsonb, 'single_source', '$.records[5].name', 'structured', '2026-07-30T10:00:06+00:00'),
+        ('62000000-0000-4000-8000-000000000006', 'product_market', '{"countryCode":"DE","medical":true}'::jsonb, 'confirmed', '$.records[5].market', 'structured', '2026-07-30T10:00:06+00:00'),
+        ('62000000-0000-4000-8000-000000000006', 'measurement', '{"analyte":"thc","value":20.5,"unit":"percent","productForm":"flower","batchIdentifier":"SYN-BATCH-001","measuredAt":"2026-07-30T00:00:00.000Z"}'::jsonb, 'single_source', '$.records[5].measurement.thc', 'structured', '2026-07-30T10:00:06+00:00'),
+        ('62000000-0000-4000-8000-000000000007', 'entity_kind', '{"entityKind":"cultivar"}'::jsonb, 'confirmed', '$.records[6].kind', 'structured', '2026-07-30T10:00:07+00:00'),
+        ('62000000-0000-4000-8000-000000000007', 'name', '{"name":"Synthetic Alternate Parent","language":"en"}'::jsonb, 'single_source', '$.records[6].name', 'structured', '2026-07-30T10:00:07+00:00')
+    ) as expected(
+      node_id,
+      claim_kind,
+      claim_value,
+      evidence_status,
+      source_locator,
+      extraction_method,
+      retrieved_at
+    )
+  $$,
+  'the RPC contains exactly the intended synthetic claims, values, statuses, and traces'
+);
+
+select set_eq(
+  $$
+    select jsonb_build_object(
+      'fromNodeId', edge.value ->> 'fromNodeId',
+      'toNodeId', edge.value -> 'toNodeId',
+      'layer', edge.value ->> 'layer',
+      'relationship', edge.value ->> 'relationship',
+      'position', edge.value -> 'position',
+      'evidenceStatus', edge.value ->> 'evidenceStatus',
+      'details', edge.value -> 'details',
+      'sourceLocator', edge.value #>> '{evidence,sourceLocator}',
+      'extractionMethod', edge.value #>> '{evidence,extractionMethod}'
+    )
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'edges') as edge(value)
+    where edge.value ->> 'fromNodeId' in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002',
+      '62000000-0000-4000-8000-000000000003',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005',
+      '62000000-0000-4000-8000-000000000006',
+      '62000000-0000-4000-8000-000000000007'
+    )
+  $$,
+  $$
+    values
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000002","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[2].lineage[0]","extractionMethod":"manual"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000001","layer":"documented_lineage","relationship":"population_membership","position":null,"evidenceStatus":"historical","details":{},"sourceLocator":"$.records[2].lineage[1]","extractionMethod":"manual"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":null,"layer":"documented_lineage","relationship":"unknown_parent","position":2,"evidenceStatus":"unknown","details":{},"sourceLocator":"$.records[2].lineage[2]","extractionMethod":"manual"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000004","toNodeId":"62000000-0000-4000-8000-000000000005","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"confirmed","details":{"method":"synthetic-method","datasetName":"Synthetic Dataset","datasetVersion":"1.0","metricName":"synthetic-similarity","value":0.875,"unit":"score"},"sourceLocator":"$.records[3].relations[0]","extractionMethod":"structured"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000005","toNodeId":"62000000-0000-4000-8000-000000000004","layer":"genetic_similarity","relationship":"genetic_similarity","position":null,"evidenceStatus":"single_source","details":{"method":"synthetic-parentage-defense","datasetName":"Synthetic Defense Dataset","datasetVersion":"2.0","metricName":"synthetic-distance","value":0.125,"unit":"distance"},"sourceLocator":"$.records[4].relations[0]","extractionMethod":"manual"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000006","toNodeId":"62000000-0000-4000-8000-000000000003","layer":"product_mapping","relationship":"product_cultivar","position":null,"evidenceStatus":"confirmed","details":{"productForm":"flower"},"sourceLocator":"$.records[5].cultivar","extractionMethod":"structured"}'::jsonb),
+      ('{"fromNodeId":"62000000-0000-4000-8000-000000000003","toNodeId":"62000000-0000-4000-8000-000000000007","layer":"documented_lineage","relationship":"reported_parent","position":1,"evidenceStatus":"disputed","details":{},"sourceLocator":"$.records[6].lineage[0]","extractionMethod":"manual"}'::jsonb)
+  $$,
+  'the RPC keeps exact documented, genetic, and product edges in separate layers'
+);
+
+select ok(
+  not exists (
+    select 1
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'claims') as claim(value)
+    where claim.value ->> 'nodeId' in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002',
+      '62000000-0000-4000-8000-000000000003',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005',
+      '62000000-0000-4000-8000-000000000006',
+      '62000000-0000-4000-8000-000000000007'
+    )
+      and (
+        claim.value #>> '{evidence,sourceName}'
+          <> 'Task 8 synthetic knowledge source'
+        or claim.value #>> '{evidence,sourceVersion}' <> 'task8-v1'
+        or claim.value #>> '{evidence,attribution}'
+          <> 'Task 8 synthetic-only attribution'
+        or claim.value #> '{evidence,citationUrl}' <> 'null'::jsonb
+      )
+  )
+  and not exists (
+    select 1
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'edges') as edge(value)
+    where edge.value ->> 'fromNodeId' in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002',
+      '62000000-0000-4000-8000-000000000003',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005',
+      '62000000-0000-4000-8000-000000000006',
+      '62000000-0000-4000-8000-000000000007'
+    )
+      and (
+        edge.value #>> '{evidence,sourceName}'
+          <> 'Task 8 synthetic knowledge source'
+        or edge.value #>> '{evidence,sourceVersion}' <> 'task8-v1'
+        or edge.value #>> '{evidence,attribution}'
+          <> 'Task 8 synthetic-only attribution'
+        or edge.value #> '{evidence,citationUrl}' <> 'null'::jsonb
+      )
+  ),
+  'every synthetic RPC claim and edge retains the exact source evidence envelope'
+);
+
+select ok(
+  (
+    select count(*) = 1
+    from api.published_knowledge_edges
+    where from_node_id = '62000000-0000-4000-8000-000000000005'
+      and to_node_id = '62000000-0000-4000-8000-000000000004'
+      and layer = 'genetic_similarity'
+      and relationship = 'genetic_similarity'
+  )
+  and not exists (
+    select 1
+    from api.published_knowledge_edges
+    where from_node_id = '62000000-0000-4000-8000-000000000005'
+      and to_node_id = '62000000-0000-4000-8000-000000000004'
+      and layer = 'documented_lineage'
+  ),
+  'the false-parentage fixture publishes only as sample genetic similarity'
+);
+
+select is(
+  (
+    select jsonb_agg(
+      jsonb_build_object(
+        'id', reference.id,
+        'preferredParentOneName', reference.preferred_parent_one_name,
+        'preferredParentTwoName', reference.preferred_parent_two_name
+      )
+      order by reference.id
+    )
+    from api.catalog_references as reference
+  ),
+  (select parentage from task8_catalog_parentage_before),
+  'genetic review and graph publication do not change any catalog preferred parent'
+);
+
+select ok(
+  (
+    select count(*) = 2
+    from api.published_knowledge_edges
+    where from_node_id = '62000000-0000-4000-8000-000000000003'
+      and layer = 'documented_lineage'
+      and relationship = 'reported_parent'
+      and position = 1
+      and evidence_status = 'disputed'
+  )
+  and (
+    select count(distinct to_node_id) = 2
+    from api.published_knowledge_edges
+    where from_node_id = '62000000-0000-4000-8000-000000000003'
+      and layer = 'documented_lineage'
+      and relationship = 'reported_parent'
+      and position = 1
+  ),
+  'both disputed parent assertions remain separately visible after publication'
+);
+
+set local role source_ingestor;
+select *
+from private.record_source_import(
+  $task8duplicate$
+  {
+    "contractVersion": 2,
+    "sourceId": "synthetic-task8-knowledge-graph",
+    "startedAt": "2026-07-30T10:01:00.000Z",
+    "completedAt": "2026-07-30T10:01:01.000Z",
+    "cursor": null,
+    "records": [
+      {
+        "externalRecordKey": "synthetic-task8-duplicate-child-name",
+        "upstreamState": "present",
+        "retrievedAt": "2026-07-30T10:01:01.000Z",
+        "sourceVersion": "task8-v2-conflict",
+        "evidence": {
+          "kind": "checksum",
+          "algorithm": "sha256",
+          "digest": "8282828282828282828282828282828282828282828282828282828282828282",
+          "retrievalReference": "https://example.invalid/task8-duplicate-name"
+        },
+        "validFrom": null,
+        "validTo": null,
+        "assertions": [
+          {
+            "kind": "name",
+            "trace": {
+              "sourceLocator": "$.duplicate.child.name",
+              "extractionMethod": "manual"
+            },
+            "subjectExternalKey": "synthetic-task8-child-001",
+            "name": "Synthetic Child Duplicate",
+            "language": "en"
+          }
+        ]
+      }
+    ],
+    "errors": []
+  }
+  $task8duplicate$::jsonb
+);
+reset role;
+
+select private.review_knowledge_assertion(
+  (
+    select assertion.id
+    from catalog.normalized_assertions as assertion
+    join catalog.source_records as record
+      on record.id = assertion.source_record_id
+    where record.source_id = 'synthetic-task8-knowledge-graph'
+      and record.external_record_key = 'synthetic-task8-duplicate-child-name'
+      and assertion.assertion_index = 0
+  ),
+  'accepted',
+  '62000000-0000-4000-8000-000000000003',
+  null,
+  'disputed',
+  'Task 8 deliberate duplicate canonical name'
+);
+
+select throws_ok(
+  $$select private.publish_reviewed_knowledge_graph()$$,
+  '22023',
+  null,
+  'a second accepted canonical name aborts graph publication'
+);
+
+select ok(
+  (
+    select
+      snapshot_id = :'task8_snapshot_id'::uuid
+      and node_count = (select count(*) from api.published_knowledge_nodes)
+      and claim_count = (select count(*) from api.published_knowledge_claims)
+      and edge_count = (select count(*) from api.published_knowledge_edges)
+    from task8_valid_graph_state
+  )
+  and (
+    select snapshot_id = :'task8_snapshot_id'::uuid
+    from catalog.knowledge_current_snapshot
+    where singleton
+  )
+  and (
+    select snapshot_id = :'task8_snapshot_id'::uuid
+    from api.published_knowledge_snapshot
+    where singleton
+  )
+  and (
+    api.get_published_knowledge_graph() #>> '{snapshotId}'
+      = :'task8_snapshot_id'
+  ),
+  'failed duplicate-name publication preserves the prior snapshot UUID and row counts'
 );
 
 select * from finish();
