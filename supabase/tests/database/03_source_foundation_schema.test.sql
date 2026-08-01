@@ -315,6 +315,22 @@ select throws_ok(
 );
 
 select throws_ok(
+  $$insert into catalog.normalized_assertions(
+      source_record_id, assertion_index, assertion_kind,
+      subject_external_key, payload
+    ) values (
+      '31000000-0000-4000-8000-000000000001',
+      1,
+      'measurement',
+      'synthetic-record-001',
+      '{"kind":"measurement","subjectExternalKey":"synthetic-record-001","analyte":"thc","value":20.5,"unit":"percent","productForm":"flower","measuredAt":"2026-02-30T12:00:00.000Z"}'
+    )$$,
+  '23514',
+  null,
+  'legacy measurement measuredAt also rejects an impossible calendar date'
+);
+
+select throws_ok(
   $$update catalog.source_records
     set source_version = 'rewritten'
     where id = '31000000-0000-4000-8000-000000000001'$$,
@@ -656,6 +672,134 @@ select $batch$
 }
 $batch$ as graph_batch
 \gset
+
+savepoint impossible_sampled_at_february_30;
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'graph_batch'::jsonb,
+      '{records,0,assertions,4,sampledAt}',
+      pg_catalog.to_jsonb('2026-02-30T12:00:00.000Z'::text)
+    )::text
+  ),
+  '22023',
+  null,
+  'sample_reference sampledAt rejects February 30 at the SQL import boundary'
+);
+rollback to savepoint impossible_sampled_at_february_30;
+
+savepoint impossible_sampled_at_non_leap_day;
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'graph_batch'::jsonb,
+      '{records,0,assertions,4,sampledAt}',
+      pg_catalog.to_jsonb('2025-02-29T12:00:00.000Z'::text)
+    )::text
+  ),
+  '22023',
+  null,
+  'sample_reference sampledAt rejects a non-leap February 29 at import'
+);
+rollback to savepoint impossible_sampled_at_non_leap_day;
+
+savepoint valid_sampled_at_leap_day;
+select lives_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'graph_batch'::jsonb,
+      '{records,0,assertions,4,sampledAt}',
+      pg_catalog.to_jsonb('2024-02-29T12:00:00.000Z'::text)
+    )::text
+  ),
+  'sample_reference sampledAt accepts a real leap day at import'
+);
+rollback to savepoint valid_sampled_at_leap_day;
+
+select $measurement_batch$
+{
+  "contractVersion": 2,
+  "sourceId": "synthetic-schema-source",
+  "startedAt": "2026-07-28T18:09:00.000Z",
+  "completedAt": "2026-07-28T18:09:01.000Z",
+  "cursor": null,
+  "records": [{
+    "externalRecordKey": "synthetic-measurement-calendar-record",
+    "upstreamState": "present",
+    "retrievedAt": "2026-07-28T18:09:01.000Z",
+    "sourceVersion": "synthetic-calendar-fixture-1",
+    "evidence": {
+      "kind": "checksum",
+      "algorithm": "sha256",
+      "digest": "9898989898989898989898989898989898989898989898989898989898989898",
+      "retrievalReference": "https://example.invalid/synthetic-measurement-calendar"
+    },
+    "validFrom": null,
+    "validTo": null,
+    "assertions": [{
+      "kind": "measurement",
+      "trace": {
+        "sourceLocator": "$.synthetic.measurement.calendar",
+        "extractionMethod": "structured"
+      },
+      "subjectExternalKey": "synthetic-measurement-calendar-record",
+      "analyte": "thc",
+      "value": 20.5,
+      "unit": "percent",
+      "productForm": "flower",
+      "batchIdentifier": "SYNTHETIC-CALENDAR-BATCH",
+      "measuredAt": "2026-02-28T12:00:00.000+01:00"
+    }]
+  }],
+  "errors": []
+}
+$measurement_batch$ as measurement_timestamp_batch
+\gset
+
+savepoint impossible_measured_at_february_30;
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'measurement_timestamp_batch'::jsonb,
+      '{records,0,assertions,0,measuredAt}',
+      pg_catalog.to_jsonb('2026-02-30T12:00:00.000Z'::text)
+    )::text
+  ),
+  '22023',
+  null,
+  'measurement measuredAt rejects February 30 at the SQL import boundary'
+);
+rollback to savepoint impossible_measured_at_february_30;
+
+savepoint impossible_measured_at_non_leap_day;
+select throws_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    pg_catalog.jsonb_set(
+      :'measurement_timestamp_batch'::jsonb,
+      '{records,0,assertions,0,measuredAt}',
+      pg_catalog.to_jsonb('2025-02-29T12:00:00.000Z'::text)
+    )::text
+  ),
+  '22023',
+  null,
+  'measurement measuredAt rejects a non-leap February 29 at import'
+);
+rollback to savepoint impossible_measured_at_non_leap_day;
+
+savepoint valid_measured_at_calendar_day;
+select lives_ok(
+  pg_catalog.format(
+    'select * from private.record_source_import(%L::jsonb)',
+    :'measurement_timestamp_batch'::text
+  ),
+  'measurement measuredAt accepts an ordinary valid calendar date at import'
+);
+rollback to savepoint valid_measured_at_calendar_day;
 
 select throws_ok(
   pg_catalog.format(

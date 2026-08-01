@@ -787,13 +787,11 @@ select private.review_knowledge_assertion(
   'synthetic conflicting parent'
 );
 
-select throws_ok(
+select lives_ok(
   $$set local role source_reviewer;
     select private.publish_reviewed_catalog();
     reset role$$,
-  '22023',
-  'Invalid catalog snapshot',
-  'a deliberately invalid snapshot is rejected'
+  'a disputed version-2 lineage review stays outside the legacy catalog snapshot'
 );
 select is(
   (
@@ -802,7 +800,16 @@ select is(
     where id = '51000000-0000-4000-8000-000000000001'
   ),
   'Synthetic Gorilla Skittlez',
-  'failed publication leaves the prior snapshot unchanged'
+  'catalog republication keeps the accepted canonical name unchanged'
+);
+select is(
+  (
+    select preferred_parent_one_name
+    from api.catalog_references
+    where id = '51000000-0000-4000-8000-000000000001'
+  ),
+  'Synthetic Gorilla Glue',
+  'disputed lineage does not overwrite the confirmed legacy parent projection'
 );
 
 select ok(

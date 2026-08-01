@@ -3811,6 +3811,320 @@ select ok(
   'both disputed parent assertions remain separately visible after publication'
 );
 
+select ok(
+  (
+    select array_agg(distinct node.value ->> 'kind' order by node.value ->> 'kind')
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'nodes') as node(value)
+    where node.value ->> 'id' like '62000000-0000-4000-8000-%'
+  ) = array[
+    'cultivar',
+    'genetic_sample',
+    'origin_population',
+    'product'
+  ]::text[]
+  and (
+    select array_agg(distinct evidence_status order by evidence_status)
+    from (
+      select claim.value ->> 'evidenceStatus' as evidence_status
+      from task8_valid_rpc as rpc
+      cross join jsonb_array_elements(rpc.graph -> 'claims') as claim(value)
+      where claim.value ->> 'nodeId' like '62000000-0000-4000-8000-%'
+      union
+      select edge.value ->> 'evidenceStatus'
+      from task8_valid_rpc as rpc
+      cross join jsonb_array_elements(rpc.graph -> 'edges') as edge(value)
+      where edge.value ->> 'fromNodeId' like '62000000-0000-4000-8000-%'
+    ) as statuses
+  ) = array[
+    'confirmed',
+    'disputed',
+    'historical',
+    'retracted',
+    'single_source',
+    'unknown'
+  ]::text[]
+  and (
+    select array_agg(distinct edge.value ->> 'relationship' order by edge.value ->> 'relationship')
+    from task8_valid_rpc as rpc
+    cross join jsonb_array_elements(rpc.graph -> 'edges') as edge(value)
+    where edge.value ->> 'fromNodeId' like '62000000-0000-4000-8000-%'
+  ) @> array[
+    'genetic_similarity',
+    'population_membership',
+    'unknown_parent'
+  ]::text[],
+  'the coexistence fixture has all graph node kinds, evidence states, and graph-only relations published'
+);
+
+create temporary table catalog_rows_before_graph_coexistence_publish as
+select
+  reference.id,
+  jsonb_build_object(
+    'id', reference.id,
+    'kind', reference.kind,
+    'canonicalName', reference.canonical_name,
+    'canonicalCultivarId', reference.canonical_cultivar_id,
+    'isFlower', reference.is_flower,
+    'preferredParentOneName', reference.preferred_parent_one_name,
+    'preferredParentTwoName', reference.preferred_parent_two_name,
+    'hasAdditionalLineage', reference.has_additional_lineage,
+    'sourcedThcLabel', reference.sourced_thc_label,
+    'sourcedCbdLabel', reference.sourced_cbd_label,
+    'sourcedValueEvidence', reference.sourced_value_evidence
+  ) as value
+from api.catalog_references as reference;
+
+create temporary table dependent_rows_before_graph_coexistence_publish as
+select
+  (
+    select jsonb_agg(to_jsonb(inventory) order by inventory.id)
+    from api.inventory_items as inventory
+  ) as inventory,
+  (
+    select jsonb_agg(
+      to_jsonb(contribution)
+      order by contribution.user_id, contribution.cultivar_id
+    )
+    from private.community_flower_contributions as contribution
+  ) as community;
+
+select lives_ok(
+  $$set local role source_reviewer;
+    select private.publish_reviewed_catalog();
+    reset role$$,
+  'the legacy catalog republishes after the complete graph snapshot'
+);
+
+select ok(
+  not exists (
+    select 1
+    from catalog_rows_before_graph_coexistence_publish as baseline
+    left join api.catalog_references as reference
+      on reference.id = baseline.id
+    where reference.id is null
+      or baseline.value is distinct from jsonb_build_object(
+        'id', reference.id,
+        'kind', reference.kind,
+        'canonicalName', reference.canonical_name,
+        'canonicalCultivarId', reference.canonical_cultivar_id,
+        'isFlower', reference.is_flower,
+        'preferredParentOneName', reference.preferred_parent_one_name,
+        'preferredParentTwoName', reference.preferred_parent_two_name,
+        'hasAdditionalLineage', reference.has_additional_lineage,
+        'sourcedThcLabel', reference.sourced_thc_label,
+        'sourcedCbdLabel', reference.sourced_cbd_label,
+        'sourcedValueEvidence', reference.sourced_value_evidence
+      )
+  ),
+  'graph coexistence republication preserves every pre-existing catalog reference'
+);
+
+select ok(
+  (
+    select jsonb_agg(to_jsonb(inventory) order by inventory.id)
+    from api.inventory_items as inventory
+  ) is not distinct from (
+    select inventory
+    from dependent_rows_before_graph_coexistence_publish
+  )
+  and (
+    select jsonb_agg(
+      to_jsonb(contribution)
+      order by contribution.user_id, contribution.cultivar_id
+    )
+    from private.community_flower_contributions as contribution
+  ) is not distinct from (
+    select community
+    from dependent_rows_before_graph_coexistence_publish
+  ),
+  'catalog republication preserves inventory and community reference rows byte-for-structure'
+);
+
+select ok(
+  exists (
+    select 1
+    from api.catalog_references
+    where id = '62000000-0000-4000-8000-000000000003'
+      and kind = 'cultivar'
+      and canonical_name = 'Synthetic Child'
+  )
+  and exists (
+    select 1
+    from api.catalog_references
+    where id = '62000000-0000-4000-8000-000000000006'
+      and kind = 'product'
+      and canonical_cultivar_id = '62000000-0000-4000-8000-000000000003'
+      and sourced_thc_label = '20.5 %'
+  ),
+  'confirmed and single-source legacy-compatible graph reviews enter the catalog projection'
+);
+
+select ok(
+  not exists (
+    select 1
+    from api.catalog_references
+    where id in (
+      '62000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000004',
+      '62000000-0000-4000-8000-000000000005'
+    )
+  )
+  and not exists (
+    select 1
+    from api.search_catalog_references('Synthetic child alias')
+  )
+  and not exists (
+    select 1
+    from api.catalog_references
+    where id = '62000000-0000-4000-8000-000000000003'
+      and (
+        preferred_parent_one_name is not null
+        or preferred_parent_two_name is not null
+        or has_additional_lineage
+      )
+  ),
+  'graph-only entities and relations plus disputed or unsafe review states stay absent from the legacy catalog'
+);
+
+select is(
+  api.get_published_knowledge_graph(),
+  (select graph from task8_valid_rpc),
+  'legacy catalog republication leaves the published graph snapshot unchanged'
+);
+
+savepoint synthetic_over_limit_publisher_defense;
+
+insert into catalog.normalized_assertions(
+  id,
+  source_record_id,
+  assertion_index,
+  assertion_kind,
+  subject_external_key,
+  payload,
+  valid_from,
+  valid_to
+) values (
+  '67400000-0000-4000-8000-000000000001',
+  (
+    select source_record.id
+    from catalog.source_records as source_record
+    where source_record.source_id = 'synthetic-task8-knowledge-graph'
+      and source_record.external_record_key = 'synthetic-task8-product-001'
+  ),
+  5,
+  'measurement',
+  'synthetic-task8-product-001',
+  '{
+    "kind":"measurement",
+    "trace":{
+      "sourceLocator":"$.synthetic.publisherDefense.flowerMeasurement",
+      "extractionMethod":"manual"
+    },
+    "subjectExternalKey":"synthetic-task8-product-001",
+    "analyte":"thc",
+    "value":70.01,
+    "unit":"percent",
+    "productForm":"flower",
+    "batchIdentifier":"SYNTHETIC-PUBLISHER-DEFENSE",
+    "measuredAt":"2026-07-30T10:00:00.000Z"
+  }',
+  null,
+  null
+);
+
+insert into catalog.assertion_reviews(
+  assertion_id,
+  decision,
+  entity_id,
+  related_entity_id,
+  reviewer_name,
+  reviewed_at,
+  note,
+  evidence_status
+) values (
+  '67400000-0000-4000-8000-000000000001',
+  'accepted',
+  '62000000-0000-4000-8000-000000000006',
+  null,
+  'synthetic-publisher-defense',
+  now(),
+  'synthetic direct accepted-row defense test',
+  'confirmed'
+);
+
+select throws_ok(
+  $$select private.publish_reviewed_knowledge_graph()$$,
+  '22023',
+  null,
+  'graph publication aborts on a synthetic accepted flower measurement above 70 percent'
+);
+
+select ok(
+  (
+    select count(*) from catalog.knowledge_publication_snapshots
+  ) = (
+    select private_snapshot_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from catalog.knowledge_snapshot_nodes
+  ) = (
+    select private_node_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from catalog.knowledge_snapshot_claims
+  ) = (
+    select private_claim_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from catalog.knowledge_snapshot_edges
+  ) = (
+    select private_edge_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select snapshot_id
+    from catalog.knowledge_current_snapshot
+    where singleton
+  ) = (
+    select private_current_snapshot_id from task8_duplicate_failure_baseline
+  ),
+  'over-limit publication failure preserves private snapshot history and the current pointer'
+);
+
+select ok(
+  (
+    select snapshot_id
+    from api.published_knowledge_snapshot
+    where singleton
+  ) = (
+    select snapshot_id from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from api.published_knowledge_nodes
+  ) = (
+    select node_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from api.published_knowledge_claims
+  ) = (
+    select claim_count from task8_duplicate_failure_baseline
+  )
+  and (
+    select count(*) from api.published_knowledge_edges
+  ) = (
+    select edge_count from task8_duplicate_failure_baseline
+  ),
+  'over-limit publication failure preserves the complete API snapshot projection'
+);
+
+select is(
+  api.get_published_knowledge_graph(),
+  (select graph from task8_valid_rpc),
+  'over-limit publication failure preserves the complete graph RPC response'
+);
+
+rollback to savepoint synthetic_over_limit_publisher_defense;
+
 set local role source_ingestor;
 select *
 from private.record_source_import(

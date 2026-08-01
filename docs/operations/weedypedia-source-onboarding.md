@@ -19,8 +19,9 @@ Nutzungserlaubnis.
   Review-Notizen, Staging-Tabellen oder Management-Funktionen.
 - Erst eine akzeptierte Prüfung und ein atomar erfolgreicher Publisher-Lauf
   dürfen öffentliche Suchdaten verändern.
-- Blütenwerte über 70 Prozent bleiben Review-Fälle und dürfen nicht
-  veröffentlicht werden.
+- Blütenwerte über 70 Prozent werden als Review-Fälle importiert, dürfen nicht
+  akzeptiert werden und lassen auch den Publisher als letzte Schutzschicht
+  abbrechen.
 - Bilder werden unabhängig von strukturierten Daten geprüft. Eine
   Datennutzungserlaubnis schließt Bildrechte nicht ein.
 - Upstream-Löschungen entfernen niemals automatisch eine veröffentlichte
@@ -42,6 +43,8 @@ enthält die vollständige, unveränderte Trace-Angabe:
 
 `sourceLocator` ist der exakte Fundort in der Quelle, keine abgeleitete URL.
 `extractionMethod` ist genau `structured`, `manual` oder `ai_assisted`.
+`sampledAt` und `measuredAt` verwenden das dokumentierte ISO-Zeitformat mit
+Zeitzone und müssen ein wirklich existierendes Kalenderdatum enthalten.
 Eine KI-gestützte Extraktion ist lediglich Herkunftsmetadatum: Sie veröffentlicht
 nie automatisch etwas und ersetzt weder Review noch Quellenrechteentscheidung.
 
@@ -91,6 +94,9 @@ ersetzt die aktuelle öffentliche Projektion atomar. Die drei Ebenen bleiben
 auch dort getrennt. `authenticated` darf die veröffentlichte, schreibgeschützte
 `api`-Projektion und die Lese-RPC abrufen; Browserrollen erhalten keinen Zugriff
 auf `catalog` oder `private` und keinen Schreibpfad in den Graphen.
+Der ältere Suchkatalog übernimmt aus Version 2 ausschließlich kompatible
+Sorten-/Produkt-Aussagen mit `confirmed` oder `single_source`; Graph-Knoten,
+Graph-Beziehungen und die vier übrigen Evidenzzustände bleiben dort außen vor.
 
 ### Fokussierte Vertragsprüfungen
 

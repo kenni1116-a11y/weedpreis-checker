@@ -77,6 +77,55 @@ $$;
 revoke all on function private.source_assertion_trace_valid(jsonb)
   from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
 
+create function private.source_timestamp_valid(value text)
+returns boolean
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  year_value integer;
+  month_value integer;
+  day_value integer;
+  hour_value integer;
+  minute_value integer;
+  second_value integer;
+  parsed_value timestamptz;
+begin
+  if value is null
+     or value !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$' then
+    return false;
+  end if;
+
+  year_value := substring(value from 1 for 4)::integer;
+  month_value := substring(value from 6 for 2)::integer;
+  day_value := substring(value from 9 for 2)::integer;
+  hour_value := substring(value from 12 for 2)::integer;
+  minute_value := substring(value from 15 for 2)::integer;
+  second_value := substring(value from 18 for 2)::integer;
+
+  if hour_value not between 0 and 23
+     or minute_value not between 0 and 59
+     or second_value not between 0 and 59 then
+    return false;
+  end if;
+
+  begin
+    perform pg_catalog.make_date(year_value, month_value, day_value);
+    parsed_value := value::timestamptz;
+  exception
+    when others then
+      return false;
+  end;
+
+  return parsed_value is not null;
+end;
+$$;
+
+revoke all on function private.source_timestamp_valid(text)
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+
 create or replace function private.source_assertion_payload_valid(
   expected_kind text,
   payload jsonb
@@ -362,8 +411,7 @@ as $$
           payload -> 'sampledAt' = 'null'::jsonb
           or (
             jsonb_typeof(payload -> 'sampledAt') = 'string'
-            and payload ->> 'sampledAt'
-              ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'
+            and private.source_timestamp_valid(payload ->> 'sampledAt')
           )
         )
       when expected_kind = 'lineage' then
@@ -603,7 +651,7 @@ as $$
             payload -> 'measuredAt' = 'null'::jsonb
             or (
               jsonb_typeof(payload -> 'measuredAt') = 'string'
-              and payload ->> 'measuredAt' ~ '^\d{4}-\d{2}-\d{2}T'
+              and private.source_timestamp_valid(payload ->> 'measuredAt')
             )
           )
         )
@@ -647,8 +695,7 @@ as $$
             payload -> 'measuredAt' = 'null'::jsonb
             or (
               jsonb_typeof(payload -> 'measuredAt') = 'string'
-              and payload ->> 'measuredAt'
-                ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'
+              and private.source_timestamp_valid(payload ->> 'measuredAt')
             )
           )
         )
@@ -1353,6 +1400,14 @@ begin
         message = 'Sample references require a genetic sample entity';
     end if;
 
+    if assertion_row.assertion_kind = 'measurement'
+       and assertion_row.payload ->> 'productForm' = 'flower'
+       and (assertion_row.payload ->> 'value')::numeric > 70 then
+      raise exception using
+        errcode = '22023',
+        message = 'Unrealistic flower measurements cannot be accepted';
+    end if;
+
     if assertion_row.assertion_kind = 'lineage' then
       relationship_kind := assertion_row.payload ->> 'relationship';
 
@@ -1470,6 +1525,170 @@ revoke all on function private.review_knowledge_assertion(
 grant execute on function private.review_knowledge_assertion(
   uuid, text, uuid, uuid, text, text
 ) to source_reviewer;
+
+create function private.legacy_catalog_entity_has_name(p_entity_id uuid)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from catalog.normalized_assertions as assertion
+    join catalog.assertion_reviews as review
+      on review.assertion_id = assertion.id
+     and review.decision = 'accepted'
+     and review.entity_id = p_entity_id
+    join catalog.source_records as source_record
+      on source_record.id = assertion.source_record_id
+     and source_record.upstream_state = 'present'
+     and source_record.license_status_snapshot = 'approved'
+    left join catalog.import_runs as import_run
+      on import_run.id = source_record.import_run_id
+     and import_run.source_id = source_record.source_id
+    join catalog.sources as source
+      on source.id = source_record.source_id
+     and source.license_status = 'approved'
+     and source.status <> 'blocked'
+    join catalog.entities as entity
+      on entity.id = review.entity_id
+     and entity.kind in ('cultivar', 'product')
+    where assertion.assertion_kind = 'name'
+      and (
+        coalesce(import_run.contract_version, 1) = 1
+        or (
+          import_run.contract_version = 2
+          and review.evidence_status in ('confirmed', 'single_source')
+        )
+      )
+      and (source_record.valid_from is null or source_record.valid_from <= now())
+      and (source_record.valid_to is null or source_record.valid_to > now())
+      and (assertion.valid_from is null or assertion.valid_from <= now())
+      and (assertion.valid_to is null or assertion.valid_to > now())
+  );
+$$;
+
+revoke all on function private.legacy_catalog_entity_has_name(uuid)
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+
+create function private.legacy_catalog_product_has_mapping(p_product_id uuid)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from catalog.normalized_assertions as assertion
+    join catalog.assertion_reviews as review
+      on review.assertion_id = assertion.id
+     and review.decision = 'accepted'
+     and review.entity_id = p_product_id
+    join catalog.source_records as source_record
+      on source_record.id = assertion.source_record_id
+     and source_record.upstream_state = 'present'
+     and source_record.license_status_snapshot = 'approved'
+    left join catalog.import_runs as import_run
+      on import_run.id = source_record.import_run_id
+     and import_run.source_id = source_record.source_id
+    join catalog.sources as source
+      on source.id = source_record.source_id
+     and source.license_status = 'approved'
+     and source.status <> 'blocked'
+    join catalog.entities as product
+      on product.id = review.entity_id
+     and product.kind = 'product'
+    join catalog.entities as cultivar
+      on cultivar.id = review.related_entity_id
+     and cultivar.kind = 'cultivar'
+    where assertion.assertion_kind = 'product_cultivar'
+      and (
+        coalesce(import_run.contract_version, 1) = 1
+        or (
+          import_run.contract_version = 2
+          and review.evidence_status in ('confirmed', 'single_source')
+        )
+      )
+      and private.legacy_catalog_entity_has_name(product.id)
+      and private.legacy_catalog_entity_has_name(cultivar.id)
+      and (source_record.valid_from is null or source_record.valid_from <= now())
+      and (source_record.valid_to is null or source_record.valid_to > now())
+      and (assertion.valid_from is null or assertion.valid_from <= now())
+      and (assertion.valid_to is null or assertion.valid_to > now())
+  );
+$$;
+
+revoke all on function private.legacy_catalog_product_has_mapping(uuid)
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
+
+create function private.legacy_catalog_assertion_eligible(p_assertion_id uuid)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select coalesce((
+    select case
+      when coalesce(import_run.contract_version, 1) = 1 then true
+      when import_run.contract_version <> 2
+        or review.evidence_status not in ('confirmed', 'single_source')
+        then false
+      when assertion.assertion_kind = 'name' then
+        entity.kind = 'cultivar'
+        or (
+          entity.kind = 'product'
+          and private.legacy_catalog_product_has_mapping(entity.id)
+        )
+      when assertion.assertion_kind = 'alias' then
+        entity.kind in ('cultivar', 'product')
+        and private.legacy_catalog_entity_has_name(entity.id)
+        and (
+          entity.kind = 'cultivar'
+          or private.legacy_catalog_product_has_mapping(entity.id)
+        )
+      when assertion.assertion_kind = 'measurement' then
+        entity.kind = 'product'
+        and private.legacy_catalog_entity_has_name(entity.id)
+        and private.legacy_catalog_product_has_mapping(entity.id)
+      when assertion.assertion_kind = 'product_cultivar' then
+        entity.kind = 'product'
+        and related_entity.kind = 'cultivar'
+        and private.legacy_catalog_product_has_mapping(entity.id)
+      when assertion.assertion_kind = 'lineage' then
+        assertion.payload ->> 'relationship' in (
+          'reported_parent',
+          'cross',
+          'backcross',
+          'selection_from'
+        )
+        and entity.kind = 'cultivar'
+        and related_entity.kind = 'cultivar'
+        and private.legacy_catalog_entity_has_name(entity.id)
+        and private.legacy_catalog_entity_has_name(related_entity.id)
+      else false
+    end
+    from catalog.normalized_assertions as assertion
+    join catalog.assertion_reviews as review
+      on review.assertion_id = assertion.id
+     and review.decision = 'accepted'
+    join catalog.source_records as source_record
+      on source_record.id = assertion.source_record_id
+    left join catalog.import_runs as import_run
+      on import_run.id = source_record.import_run_id
+     and import_run.source_id = source_record.source_id
+    join catalog.entities as entity
+      on entity.id = review.entity_id
+    left join catalog.entities as related_entity
+      on related_entity.id = review.related_entity_id
+    where assertion.id = p_assertion_id
+  ), false);
+$$;
+
+revoke all on function private.legacy_catalog_assertion_eligible(uuid)
+  from public, anon, authenticated, service_role, source_ingestor, source_reviewer;
 
 create table catalog.knowledge_publication_snapshots (
   id uuid primary key default gen_random_uuid(),
@@ -1876,6 +2095,18 @@ begin
       assertion.valid_to is null
       or assertion.valid_to > publication_time
     );
+
+  if exists (
+    select 1
+    from jsonb_array_elements(accepted_assertions) as accepted(value)
+    where accepted.value ->> 'assertionKind' = 'measurement'
+      and accepted.value #>> '{payload,productForm}' = 'flower'
+      and (accepted.value #>> '{payload,value}')::numeric > 70
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid knowledge graph snapshot';
+  end if;
 
   if exists (
     with accepted as (
@@ -2550,3 +2781,511 @@ grant select on
   api.published_knowledge_claims,
   api.published_knowledge_edges
   to authenticated;
+
+
+create or replace function private.publish_reviewed_catalog()
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  snapshot_identifier uuid := gen_random_uuid();
+begin
+  perform pg_catalog.pg_advisory_xact_lock(20773691, 1);
+
+  insert into catalog.publication_assertion_staging(
+    snapshot_id,
+    assertion_id,
+    assertion_kind,
+    payload,
+    entity_id,
+    related_entity_id,
+    reviewed_at,
+    source_version,
+    retrieved_at,
+    retrieval_reference,
+    attribution_snapshot,
+    source_name
+  )
+  select
+    snapshot_identifier,
+    assertion.id as assertion_id,
+    assertion.assertion_kind,
+    assertion.payload,
+    review.entity_id,
+    review.related_entity_id,
+    review.reviewed_at,
+    source_record.source_version,
+    source_record.retrieved_at,
+    source_record.retrieval_reference,
+    source_record.attribution_snapshot,
+    source.display_name as source_name
+  from catalog.normalized_assertions assertion
+  join catalog.assertion_reviews review
+    on review.assertion_id = assertion.id
+   and review.decision = 'accepted'
+  join catalog.source_records source_record
+    on source_record.id = assertion.source_record_id
+   and source_record.upstream_state = 'present'
+   and source_record.license_status_snapshot = 'approved'
+  join catalog.sources source
+    on source.id = source_record.source_id
+   and source.license_status = 'approved'
+   and source.status <> 'blocked'
+  where private.legacy_catalog_assertion_eligible(assertion.id)
+    and (assertion.valid_from is null or assertion.valid_from <= now())
+    and (assertion.valid_to is null or assertion.valid_to > now());
+
+  if exists (
+    select 1
+    from catalog.publication_assertion_staging
+    where snapshot_id = snapshot_identifier
+      and assertion_kind = 'name'
+    group by entity_id
+    having count(distinct payload ->> 'name') <> 1
+  )
+  or exists (
+    select 1
+    from catalog.publication_assertion_staging
+    where snapshot_id = snapshot_identifier
+      and assertion_kind = 'name'
+      and char_length(payload ->> 'name') not between 1 and 160
+  )
+  or exists (
+    select 1
+    from catalog.publication_assertion_staging accepted
+    left join catalog.entities entity on entity.id = accepted.entity_id
+    where accepted.snapshot_id = snapshot_identifier
+      and entity.id is null
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from catalog.publication_assertion_staging accepted
+    join catalog.entities entity on entity.id = accepted.entity_id
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'measurement'
+      and (
+        accepted.payload ->> 'unit' <> 'percent'
+        or (
+          accepted.payload ->> 'productForm' = 'flower'
+          and (accepted.payload ->> 'value')::numeric > 70
+        )
+      )
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from catalog.publication_assertion_staging
+    where snapshot_id = snapshot_identifier
+      and assertion_kind = 'lineage'
+      and payload ->> 'position' in ('1', '2')
+    group by entity_id, payload ->> 'position'
+    having count(*) > 1
+  )
+  or exists (
+    select 1
+    from catalog.publication_assertion_staging accepted
+    left join catalog.entities child on child.id = accepted.entity_id
+    left join catalog.entities parent on parent.id = accepted.related_entity_id
+    left join catalog.publication_assertion_staging parent_name
+      on parent_name.snapshot_id = accepted.snapshot_id
+     and parent_name.entity_id = accepted.related_entity_id
+     and parent_name.assertion_kind = 'name'
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'lineage'
+      and (
+        child.kind <> 'cultivar'
+        or parent.kind <> 'cultivar'
+        or parent_name.assertion_id is null
+      )
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from catalog.publication_assertion_staging
+    where snapshot_id = snapshot_identifier
+      and assertion_kind = 'product_cultivar'
+    group by entity_id
+    having count(*) <> 1
+  )
+  or exists (
+    select 1
+    from catalog.publication_assertion_staging accepted
+    left join catalog.entities product on product.id = accepted.entity_id
+    left join catalog.entities cultivar
+      on cultivar.id = accepted.related_entity_id
+    left join catalog.publication_assertion_staging product_name
+      on product_name.snapshot_id = accepted.snapshot_id
+     and product_name.entity_id = accepted.entity_id
+     and product_name.assertion_kind = 'name'
+    left join catalog.publication_assertion_staging cultivar_name
+      on cultivar_name.snapshot_id = accepted.snapshot_id
+     and cultivar_name.entity_id = accepted.related_entity_id
+     and cultivar_name.assertion_kind = 'name'
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'product_cultivar'
+      and (
+        product.kind <> 'product'
+        or cultivar.kind <> 'cultivar'
+        or product_name.assertion_id is null
+        or cultivar_name.assertion_id is null
+      )
+  )
+  or exists (
+    select 1
+    from catalog.publication_assertion_staging name_assertion
+    join catalog.entities entity on entity.id = name_assertion.entity_id
+    left join catalog.publication_assertion_staging mapping
+      on mapping.snapshot_id = name_assertion.snapshot_id
+     and mapping.entity_id = name_assertion.entity_id
+     and mapping.assertion_kind = 'product_cultivar'
+    where name_assertion.snapshot_id = snapshot_identifier
+      and name_assertion.assertion_kind = 'name'
+      and entity.kind = 'product'
+    group by name_assertion.entity_id
+    having count(distinct mapping.assertion_id) <> 1
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  if exists (
+    select 1
+    from catalog.publication_assertion_staging accepted
+    left join catalog.publication_assertion_staging canonical_name
+      on canonical_name.snapshot_id = accepted.snapshot_id
+     and canonical_name.entity_id = accepted.entity_id
+     and canonical_name.assertion_kind = 'name'
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind in ('alias', 'lineage', 'measurement')
+      and canonical_name.assertion_id is null
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  insert into catalog.catalog_reference_staging(
+    snapshot_id,
+    id,
+    kind,
+    canonical_name,
+    canonical_cultivar_id,
+    is_flower,
+    preferred_parent_one_name,
+    preferred_parent_two_name,
+    has_additional_lineage,
+    sourced_thc_label,
+    sourced_cbd_label,
+    sourced_value_evidence
+  )
+  with canonical_names as (
+    select
+      accepted.entity_id,
+      min(accepted.payload ->> 'name') as canonical_name
+    from catalog.publication_assertion_staging accepted
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'name'
+    group by accepted.entity_id
+  ),
+  product_mappings as (
+    select
+      accepted.entity_id as product_id,
+      min(accepted.related_entity_id::text)::uuid as cultivar_id,
+      bool_or(accepted.payload ->> 'productForm' = 'flower') as is_flower
+    from catalog.publication_assertion_staging accepted
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'product_cultivar'
+    group by accepted.entity_id
+  ),
+  references_with_cultivar as (
+    select
+      entity.id,
+      entity.kind,
+      canonical_names.canonical_name,
+      case
+        when entity.kind = 'cultivar' then entity.id
+        else product_mappings.cultivar_id
+      end as canonical_cultivar_id,
+      coalesce(product_mappings.is_flower, false) as is_flower
+    from canonical_names
+    join catalog.entities entity on entity.id = canonical_names.entity_id
+    left join product_mappings on product_mappings.product_id = entity.id
+  ),
+  lineage as (
+    select
+      accepted.entity_id as cultivar_id,
+      min(parent_name.canonical_name)
+        filter (where accepted.payload ->> 'position' = '1')
+        as preferred_parent_one_name,
+      min(parent_name.canonical_name)
+        filter (where accepted.payload ->> 'position' = '2')
+        as preferred_parent_two_name,
+      bool_or(accepted.payload -> 'position' = 'null'::jsonb)
+        as has_additional_lineage
+    from catalog.publication_assertion_staging accepted
+    join canonical_names parent_name
+      on parent_name.entity_id = accepted.related_entity_id
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'lineage'
+    group by accepted.entity_id
+  ),
+  measurement_ranges as (
+    select
+      accepted.entity_id,
+      accepted.payload ->> 'analyte' as analyte,
+      min((accepted.payload ->> 'value')::numeric) as minimum_value,
+      max((accepted.payload ->> 'value')::numeric) as maximum_value
+    from catalog.publication_assertion_staging accepted
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'measurement'
+    group by accepted.entity_id, accepted.payload ->> 'analyte'
+  ),
+  measurement_labels as (
+    select
+      ranges.entity_id,
+      max(
+        case when ranges.analyte = 'thc' then
+          case
+            when ranges.minimum_value = ranges.maximum_value
+              then to_char(ranges.minimum_value, 'FM999999990.999') || ' %'
+            else
+              to_char(ranges.minimum_value, 'FM999999990.999')
+              || '–'
+              || to_char(ranges.maximum_value, 'FM999999990.999')
+              || ' %'
+          end
+        end
+      ) as sourced_thc_label,
+      max(
+        case when ranges.analyte = 'cbd' then
+          case
+            when ranges.minimum_value = ranges.maximum_value
+              then to_char(ranges.minimum_value, 'FM999999990.999') || ' %'
+            else
+              to_char(ranges.minimum_value, 'FM999999990.999')
+              || '–'
+              || to_char(ranges.maximum_value, 'FM999999990.999')
+              || ' %'
+          end
+        end
+      ) as sourced_cbd_label
+    from measurement_ranges ranges
+    group by ranges.entity_id
+  ),
+  evidence_rows as (
+    select distinct
+      accepted.entity_id,
+      accepted.source_name,
+      accepted.source_version,
+      accepted.retrieved_at,
+      case
+        when accepted.retrieval_reference ~ '^https://'
+          then accepted.retrieval_reference
+        else null
+      end as citation_url,
+      accepted.attribution_snapshot
+    from catalog.publication_assertion_staging accepted
+    where accepted.snapshot_id = snapshot_identifier
+      and accepted.assertion_kind = 'measurement'
+  ),
+  evidence as (
+    select
+      evidence_rows.entity_id,
+      jsonb_agg(
+        jsonb_build_object(
+          'sourceName', evidence_rows.source_name,
+          'sourceVersion', evidence_rows.source_version,
+          'retrievedAt', evidence_rows.retrieved_at,
+          'citationUrl', evidence_rows.citation_url,
+          'attribution', evidence_rows.attribution_snapshot
+        )
+        order by
+          evidence_rows.retrieved_at desc,
+          evidence_rows.source_name
+      ) as sourced_value_evidence
+    from evidence_rows
+    group by evidence_rows.entity_id
+  )
+  select
+    snapshot_identifier,
+    reference.id,
+    reference.kind,
+    reference.canonical_name,
+    reference.canonical_cultivar_id,
+    reference.is_flower,
+    lineage.preferred_parent_one_name,
+    lineage.preferred_parent_two_name,
+    coalesce(lineage.has_additional_lineage, false)
+      as has_additional_lineage,
+    measurement_labels.sourced_thc_label,
+    measurement_labels.sourced_cbd_label,
+    coalesce(evidence.sourced_value_evidence, '[]'::jsonb)
+      as sourced_value_evidence
+  from references_with_cultivar reference
+  left join lineage on lineage.cultivar_id = reference.canonical_cultivar_id
+  left join measurement_labels
+    on measurement_labels.entity_id = reference.id
+  left join evidence on evidence.entity_id = reference.id;
+
+  if exists (
+    select 1
+    from catalog.catalog_reference_staging snapshot
+    where snapshot.snapshot_id = snapshot_identifier
+      and snapshot.kind = 'product'
+      and snapshot.canonical_cultivar_id is null
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'Invalid catalog snapshot';
+  end if;
+
+  insert into catalog.catalog_term_staging(
+    snapshot_id,
+    reference_id,
+    term,
+    language,
+    match_reason
+  )
+  select
+    snapshot_identifier,
+    snapshot.id as reference_id,
+    snapshot.canonical_name as term,
+    ''::text as language,
+    case
+      when snapshot.kind = 'product' then 'product'
+      else 'canonical'
+    end::text as match_reason
+  from catalog.catalog_reference_staging snapshot
+  where snapshot.snapshot_id = snapshot_identifier
+  union
+  select
+    snapshot_identifier,
+    accepted.entity_id,
+    accepted.payload ->> 'name',
+    coalesce(accepted.payload ->> 'language', ''),
+    'alias'::text
+  from catalog.publication_assertion_staging accepted
+  join catalog.catalog_reference_staging snapshot
+    on snapshot.snapshot_id = accepted.snapshot_id
+   and snapshot.id = accepted.entity_id
+  where accepted.snapshot_id = snapshot_identifier
+    and accepted.assertion_kind = 'alias';
+
+  update catalog.entities entity
+  set canonical_name = snapshot.canonical_name,
+      published = true
+  from catalog.catalog_reference_staging snapshot
+  where snapshot.snapshot_id = snapshot_identifier
+    and entity.id = snapshot.id;
+
+  update catalog.entities entity
+  set published = false
+  where entity.published
+    and not exists (
+      select 1
+      from catalog.catalog_reference_staging snapshot
+      where snapshot.snapshot_id = snapshot_identifier
+        and snapshot.id = entity.id
+    );
+
+  insert into api.catalog_references(
+    id,
+    kind,
+    canonical_name,
+    canonical_cultivar_id,
+    is_flower,
+    preferred_parent_one_name,
+    preferred_parent_two_name,
+    has_additional_lineage,
+    sourced_thc_label,
+    sourced_cbd_label,
+    sourced_value_evidence,
+    published_at
+  )
+  select
+    snapshot.id,
+    snapshot.kind,
+    snapshot.canonical_name,
+    snapshot.canonical_cultivar_id,
+    snapshot.is_flower,
+    snapshot.preferred_parent_one_name,
+    snapshot.preferred_parent_two_name,
+    snapshot.has_additional_lineage,
+    snapshot.sourced_thc_label,
+    snapshot.sourced_cbd_label,
+    snapshot.sourced_value_evidence,
+    now()
+  from catalog.catalog_reference_staging snapshot
+  where snapshot.snapshot_id = snapshot_identifier
+  on conflict (id) do update
+  set kind = excluded.kind,
+      canonical_name = excluded.canonical_name,
+      canonical_cultivar_id = excluded.canonical_cultivar_id,
+      is_flower = excluded.is_flower,
+      preferred_parent_one_name = excluded.preferred_parent_one_name,
+      preferred_parent_two_name = excluded.preferred_parent_two_name,
+      has_additional_lineage = excluded.has_additional_lineage,
+      sourced_thc_label = excluded.sourced_thc_label,
+      sourced_cbd_label = excluded.sourced_cbd_label,
+      sourced_value_evidence = excluded.sourced_value_evidence,
+      published_at = excluded.published_at;
+
+  delete from catalog.published_search_terms;
+
+  delete from api.catalog_references reference
+  where not exists (
+      select 1
+      from catalog.catalog_reference_staging snapshot
+      where snapshot.snapshot_id = snapshot_identifier
+        and snapshot.id = reference.id
+    )
+    and not exists (
+      select 1
+      from api.inventory_items inventory
+      where inventory.entity_id = reference.id
+    );
+
+  insert into catalog.published_search_terms(
+    reference_id,
+    term,
+    language,
+    match_reason
+  )
+  select
+    term.reference_id,
+    term.term,
+    term.language,
+    term.match_reason
+  from catalog.catalog_term_staging term
+  where term.snapshot_id = snapshot_identifier;
+
+  delete from catalog.catalog_term_staging
+  where snapshot_id = snapshot_identifier;
+  delete from catalog.catalog_reference_staging
+  where snapshot_id = snapshot_identifier;
+  delete from catalog.publication_assertion_staging
+  where snapshot_id = snapshot_identifier;
+end;
+$$;
+
+
+revoke all on function private.publish_reviewed_catalog()
+  from public, anon, authenticated, service_role, source_ingestor;
+grant execute on function private.publish_reviewed_catalog()
+  to source_reviewer;

@@ -31,12 +31,19 @@ insert into catalog.sources(
   'inactive'
 );
 
-insert into catalog.entities(id, kind, canonical_name, published) values (
-  '33000000-0000-4000-8000-000000000001',
-  'cultivar',
-  'Synthetic reviewed cultivar',
-  false
-);
+insert into catalog.entities(id, kind, canonical_name, published) values
+  (
+    '33000000-0000-4000-8000-000000000001',
+    'cultivar',
+    'Synthetic reviewed cultivar',
+    false
+  ),
+  (
+    '33000000-0000-4000-8000-000000000002',
+    'product',
+    'Synthetic reviewed flower product',
+    false
+  );
 
 select ok(
   not has_schema_privilege('anon', 'catalog', 'usage'),
@@ -458,6 +465,200 @@ select is(
   )::bigint,
   0::bigint,
   'review decision closes its mapping case'
+);
+
+select $flower_measurement_batch$
+{
+  "contractVersion": 2,
+  "sourceId": "synthetic-access-source",
+  "startedAt": "2026-07-28T18:02:00.000Z",
+  "completedAt": "2026-07-28T18:02:01.000Z",
+  "cursor": null,
+  "records": [{
+    "externalRecordKey": "synthetic-flower-review-boundaries",
+    "upstreamState": "present",
+    "retrievedAt": "2026-07-28T18:02:01.000Z",
+    "sourceVersion": "fixture-flower-review-boundaries",
+    "evidence": {
+      "kind": "checksum",
+      "algorithm": "sha256",
+      "digest": "7070017070017070017070017070017070017070017070017070017070017070",
+      "retrievalReference": "https://example.invalid/flower-review-boundaries"
+    },
+    "validFrom": null,
+    "validTo": null,
+    "assertions": [
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[0]",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 70,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-EXACT-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      },
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[1]",
+          "extractionMethod": "structured"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 70.01,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-ABOVE-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      },
+      {
+        "kind": "measurement",
+        "trace": {
+          "sourceLocator": "$.synthetic.flowerMeasurements[2]",
+          "extractionMethod": "manual"
+        },
+        "subjectExternalKey": "synthetic-flower-review-boundaries",
+        "analyte": "thc",
+        "value": 71,
+        "unit": "percent",
+        "productForm": "flower",
+        "batchIdentifier": "SYNTHETIC-REJECTED-ABOVE-LIMIT",
+        "measuredAt": "2026-07-28T18:00:00.000Z"
+      }
+    ]
+  }],
+  "errors": []
+}
+$flower_measurement_batch$ as flower_measurement_batch
+\gset
+
+set local role source_ingestor;
+select * from private.record_source_import(:'flower_measurement_batch'::jsonb);
+reset role;
+
+select
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '70'
+  ) as flower_70_assertion_id,
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '70.01'
+  ) as flower_70_01_assertion_id,
+  max(assertion.id::text) filter (
+    where assertion.payload ->> 'value' = '71'
+  ) as flower_71_assertion_id
+from catalog.normalized_assertions as assertion
+join catalog.source_records as source_record
+  on source_record.id = assertion.source_record_id
+where source_record.source_id = 'synthetic-access-source'
+  and source_record.external_record_key = 'synthetic-flower-review-boundaries'
+\gset
+
+create temporary table flower_70_01_review_case_baseline as
+select jsonb_agg(to_jsonb(review_case) order by review_case.id) as cases
+from catalog.review_cases as review_case
+where review_case.assertion_id = :'flower_70_01_assertion_id'::uuid;
+
+select lives_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_70_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'confirmed',
+    'exactly 70 percent remains reviewable'
+  ),
+  'an exact 70-percent flower measurement can be accepted'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_70_01_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'single_source',
+    'must reject 70.01 percent'
+  ),
+  '22023',
+  null,
+  'a 70.01-percent flower measurement cannot be accepted'
+);
+
+select throws_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, %L, null, %L, %L); '
+      || 'reset role',
+    :'flower_71_assertion_id',
+    'accepted',
+    '33000000-0000-4000-8000-000000000002',
+    'confirmed',
+    'must reject 71 percent'
+  ),
+  '22023',
+  null,
+  'a 71-percent flower measurement cannot be accepted'
+);
+
+select is(
+  (
+    select jsonb_agg(to_jsonb(review_case) order by review_case.id)
+    from catalog.review_cases as review_case
+    where review_case.assertion_id = :'flower_70_01_assertion_id'::uuid
+  ),
+  (select cases from flower_70_01_review_case_baseline),
+  'failed acceptance leaves the existing 70.01 review cases open and unmodified'
+);
+
+select is(
+  (
+    select count(*)
+    from catalog.assertion_reviews
+    where assertion_id in (
+      :'flower_70_01_assertion_id'::uuid,
+      :'flower_71_assertion_id'::uuid
+    )
+  )::bigint,
+  0::bigint,
+  'failed over-limit acceptances leave no assertion-review residue'
+);
+
+select lives_ok(
+  pg_catalog.format(
+    'set local role source_reviewer; '
+      || 'select private.review_knowledge_assertion(%L, %L, null, null, null, %L); '
+      || 'reset role',
+    :'flower_71_assertion_id',
+    'rejected',
+    'explicitly reject unrealistic evidence'
+  ),
+  'an over-limit flower measurement can still be rejected'
+);
+
+select ok(
+  (
+    select decision = 'accepted' and evidence_status = 'confirmed'
+    from catalog.assertion_reviews
+    where assertion_id = :'flower_70_assertion_id'::uuid
+  )
+  and (
+    select decision = 'rejected'
+      and entity_id is null
+      and related_entity_id is null
+      and evidence_status is null
+    from catalog.assertion_reviews
+    where assertion_id = :'flower_71_assertion_id'::uuid
+  ),
+  'the 70-percent acceptance and 71-percent rejection persist with exact review semantics'
 );
 
 select $batch$

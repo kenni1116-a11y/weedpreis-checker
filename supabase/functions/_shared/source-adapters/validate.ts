@@ -11,7 +11,7 @@ import type {
 type UnknownRecord = Record<string, unknown>;
 
 const timestampPattern =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const sourceIdPattern = /^[a-z0-9][a-z0-9._-]{2,79}$/;
 const productForms = ["flower", "extract", "oil", "other"] as const;
@@ -73,10 +73,29 @@ function nullableText(
 }
 
 function timestamp(value: unknown, path: string): string {
+  const match = typeof value === "string"
+    ? timestampPattern.exec(value)
+    : null;
   if (
     typeof value !== "string" ||
-    !timestampPattern.test(value) ||
+    match === null ||
     !Number.isFinite(Date.parse(value))
+  ) {
+    invalid(path, "expected an ISO timestamp");
+  }
+  const [year, month, day, hour, minute, second] = match.slice(1, 7)
+    .map(Number);
+  const calendar = new Date(
+    Date.UTC(year, month - 1, day, hour, minute, second),
+  );
+  if (
+    month < 1 || month > 12 || hour > 23 || minute > 59 || second > 59 ||
+    calendar.getUTCFullYear() !== year ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day ||
+    calendar.getUTCHours() !== hour ||
+    calendar.getUTCMinutes() !== minute ||
+    calendar.getUTCSeconds() !== second
   ) {
     invalid(path, "expected an ISO timestamp");
   }

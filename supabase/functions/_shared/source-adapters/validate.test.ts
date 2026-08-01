@@ -181,6 +181,69 @@ Deno.test("source adapter validates knowledge assertion cross-field constraints"
   }
 });
 
+Deno.test("source adapter rejects impossible sampledAt and measuredAt calendar dates", () => {
+  const mutations: Array<[
+    string,
+    string,
+    (input: Record<string, unknown>, value: string) => void,
+  ]> = [
+    ["sampledAt", "2026-02-30T12:00:00.000Z", (input, value) => {
+      graphAssertion(input, "synthetic-sample-001", "sample_reference")
+        .sampledAt = value;
+    }],
+    ["sampledAt", "2025-02-29T12:00:00.000Z", (input, value) => {
+      graphAssertion(input, "synthetic-sample-001", "sample_reference")
+        .sampledAt = value;
+    }],
+    ["measuredAt", "2026-02-30T12:00:00.000Z", (input, value) => {
+      graphAssertion(input, "synthetic-product-001", "measurement")
+        .measuredAt = value;
+    }],
+    ["measuredAt", "2025-02-29T12:00:00.000Z", (input, value) => {
+      graphAssertion(input, "synthetic-product-001", "measurement")
+        .measuredAt = value;
+    }],
+  ];
+
+  for (const [field, impossibleDate, mutate] of mutations) {
+    const input = graphFixture();
+    mutate(input, impossibleDate);
+    assertThrows(
+      () => validateAdapterBatch(input),
+      Error,
+      field,
+      `expected ${field}=${impossibleDate} to be rejected`,
+    );
+  }
+});
+
+Deno.test("source adapter accepts leap-day and ordinary calendar timestamps", () => {
+  const input = graphFixture();
+  graphAssertion(input, "synthetic-sample-001", "sample_reference").sampledAt =
+    "2024-02-29T12:00:00.000Z";
+  graphAssertion(input, "synthetic-product-001", "measurement").measuredAt =
+    "2026-02-28T12:00:00.000+01:00";
+
+  const result = validateAdapterBatch(input);
+
+  assertEquals(
+    graphAssertion(
+      result.batch as unknown as Record<string, unknown>,
+      "synthetic-sample-001",
+      "sample_reference",
+    ).sampledAt,
+    "2024-02-29T12:00:00.000Z",
+  );
+  assertEquals(
+    graphAssertion(
+      result.batch as unknown as Record<string, unknown>,
+      "synthetic-product-001",
+      "measurement",
+    ).measuredAt,
+    "2026-02-28T12:00:00.000+01:00",
+  );
+});
+
 Deno.test("source adapter rejects scored sample_match assertions specifically", () => {
   const input = graphFixture();
   const relation = graphAssertion(
